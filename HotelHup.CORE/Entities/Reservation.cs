@@ -9,44 +9,48 @@ using HotelHup.CORE.Enums;
 namespace HotelHup.CORE.Entities
 {
 
-    public class Reservation
+    public class Reservation:BaseEntity
     {
         [Key, Required]
         public int Id { get; set; }
-        [Required, MaxLength(30)]
-        public string ReservationCode { get; set; } = string.Empty;
-
         public int GuestId { get; set; }
-        [ForeignKey(nameof(GuestId))]
-        public Guest Guest { get; set; } = null!;
 
-        public int RoomId { get; set; }
-        [ForeignKey(nameof(RoomId))]
-        public Room Room { get; set; } = null!;
+        public int PropertyId { get; set; }
+
+        public ReservationStatus Status { get; set; }
 
         public DateTime CheckInDate { get; set; }
+
         public DateTime CheckOutDate { get; set; }
-        public DateTime? ActualCheckInDate { get; set; }
-        public DateTime? ActualCheckOutDate { get; set; }
 
-        public int NumberOfAdults { get; set; }
-        public int NumberOfChildren { get; set; }
+        public int Adults { get; set; }
 
-        public ReservationStatus Status { get; set; } = ReservationStatus.Confirmed;
+        public int Children { get; set; }
 
-        [Column(TypeName = "decimal(10,2)")]
+        public BookingSource Source { get; set; }
+
         public decimal TotalAmount { get; set; }
 
-        public string CreatedById { get; set; }
-        [ForeignKey(nameof(CreatedById))]
-        public User CreatedBy { get; set; } = null!;
+        public decimal DiscountAmount { get; set; }
 
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public decimal TaxAmount { get; set; }
 
-        [MaxLength(300)]
-        public string? CancellationReason { get; set; }
+        public decimal FeeAmount { get; set; }
+
+        public string? CancellationPolicySnapshot { get; set; }
+
+        public string? RateSnapshot { get; set; }
+
 
         // Navigation
-        public Invoice? Invoice { get; set; }
+
+        public Guest Guest { get; set; } = null!;
+
+        public Property Property { get; set; } = null!;
+
+        public ICollection<ReservationRoom> ReservationRooms { get; set; }
+            = new List<ReservationRoom>();
+
+        public Folio? Folio { get; set; }
     }
 }

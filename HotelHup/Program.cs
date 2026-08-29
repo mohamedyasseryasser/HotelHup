@@ -1,11 +1,7 @@
 using System.Text;
-using HotelHup.APPLICATION.interfacesrepo;
-using HotelHup.APPLICATION.services.implementation;
-using HotelHup.APPLICATION.services.interfaces;
-using HotelHup.CORE.Entities;
+ using HotelHup.CORE.Entities;
 using HotelHup.INFRASTRUCTURE.Context;
-using HotelHup.INFRASTRUCTURE.repos.implementation;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -63,10 +59,8 @@ namespace HotelHup
                       .AllowAnyHeader()
                       .AllowAnyMethod()));
 
-            builder.Services.AddScoped<IAuthRepo, AuthRepo>();
-            builder.Services.AddScoped<IAuthService, AuthService>();
-            builder.Services.AddScoped<IUserRepo, UserRepo>();
-            builder.Services.AddScoped<IUserService, UserService>();
+     
+         
             builder.Services.AddControllers();
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen(c =>

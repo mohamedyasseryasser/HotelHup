@@ -8,23 +8,30 @@ using System.Text;
 using System.Threading.Tasks;
 namespace HotelHup.CORE.Entities
 {
-    public class Payment
+    public class Payment:BaseEntity
     {
         [Key, Required]
         public int Id { get; set; }
-        public int InvoiceId { get; set; }
-        [ForeignKey(nameof(InvoiceId))]
-        public Invoice Invoice { get; set; } = null!;
+        public int FolioId { get; set; }
 
-        [Column(TypeName = "decimal(10,2)")]
+        public PaymentMethod Method { get; set; }
+
+        public PaymentStatus Status { get; set; }
+
         public decimal Amount { get; set; }
 
-        public PaymentMethod PaymentMethod { get; set; }
+        public string? ExternalId { get; set; }
 
-        public DateTime PaymentDate { get; set; } = DateTime.UtcNow;
+        public string? IdempotencyKey { get; set; }
 
-        public string ReceivedById { get; set; }
-        [ForeignKey(nameof(ReceivedById))]
-        public User ReceivedBy { get; set; } = null!;
+        public DateTime? PaidAt { get; set; }
+
+
+        // Navigation
+
+        public Folio Folio { get; set; } = null!;
+
+        public ICollection<Refund> Refunds { get; set; }
+            = new List<Refund>();
     }
 }

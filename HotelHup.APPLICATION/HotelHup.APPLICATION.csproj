@@ -11,8 +11,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="DTO\room\" />
-    <Folder Include="DTO\roomtype\" />
+    <Folder Include="interfacesrepo\" />
+    <Folder Include="services\implementation\" />
+    <Folder Include="services\interfaces\" />
   </ItemGroup>
 
 </Project>
