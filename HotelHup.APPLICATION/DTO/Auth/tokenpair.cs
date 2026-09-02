@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace HotelHup.APPLICATION.DTO.Auth
 {
-    public sealed class TokenPair
+    public sealed class TokenPairdto
     {
         public string AccessToken { get; init; } = string.Empty;
         public string RefreshToken { get; init; } = string.Empty;

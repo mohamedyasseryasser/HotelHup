@@ -16,20 +16,20 @@ namespace HotelHup.APPLICATION.DTO.General
         public List<string> Errors { get; init; } = new();
         public int StatusCode { get; init; }
 
-        public ResponseStatus(T data, string message = "", bool success = true, List<string>? errors = null, int statusCode = 200, string? code = null, string? correlationId = null)
+        public ResponseStatus(T data, string message = "",  int statusCode = 200, string? code = null, string? correlationId = null)
         {
-            Success = success;
+            Success =true;
             Message = message;
             Data = data;
-            Errors = errors ?? new List<string>();
+            Errors =  new List<string>();
             StatusCode = statusCode;
             Code = code;
             CorrelationId = correlationId;
         }
 
-        public ResponseStatus(string message = "", bool success = false, List<string>? errors = null, int statusCode = 400, string? code = null, string? correlationId = null)
+        public ResponseStatus(string message = "",  List<string>? errors = null, int statusCode = 400, string? code = null, string? correlationId = null)
         {
-            Success = success;
+            Success = false;
             Message = message;
             Errors = errors ?? new List<string>();
             StatusCode = statusCode;

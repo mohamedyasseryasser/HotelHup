@@ -20,7 +20,7 @@ namespace HotelHup
                 ?? throw new InvalidOperationException("JWT:Key not found.");
 
             builder.Services.AddDbContext<INFRASTRUCTURE.Context.hotelhupContext>(options => options.UseSqlServer(connectionString));
-
+            builder.Services.AddHttpContextAccessor();
             builder.Services.AddIdentity<User, IdentityRole>(options =>
             {
                 options.User.RequireUniqueEmail = true;

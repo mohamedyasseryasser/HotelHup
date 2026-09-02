@@ -66,9 +66,9 @@ namespace HotelHup.APPLICATION.services.implementation
             await _repository.AddAuthenticationAuditAsync(user, "Login Success", cancellationToken);
 
             return new ResponseStatus<LoginResponseDto>(
-                ToResponse(tokenPair, user, roles),
-                "Login successful.",
-                200);
+                ToResponse(tokenPairs, user, roles),
+            message:    "Login successful.",
+                statusCode:200);
         }
 
         public async Task<ResponseStatus<LoginResponseDto>> RefreshAsync(
@@ -103,8 +103,8 @@ namespace HotelHup.APPLICATION.services.implementation
 
             return new ResponseStatus<LoginResponseDto>(
                 ToResponse(replacement, storedToken.User, roles),
-                "Token refreshed successfully.",
-                200);
+                message:"Token refreshed successfully.",
+         statusCode:       200);
         }
 
         public async Task<ResponseStatus<bool>> LogoutAsync(
@@ -123,7 +123,7 @@ namespace HotelHup.APPLICATION.services.implementation
             }
 
             await _repository.RevokeRefreshTokensAsync(user.Id, cancellationToken);
-            return new ResponseStatus<bool>(true, "Logout successful.", 200);
+            return new ResponseStatus<bool>(true, message:"Logout successful.",statusCode: 200);
         }
 
         private static LoginResponseDto ToResponse(

@@ -6,6 +6,7 @@ using HotelHup.APPLICATION.interfacesrepo;
 using HotelHup.APPLICATION.services.interfaces;
 using HotelHup.CORE.Entities;
 using HotelHup.CORE.Enums;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using System;
@@ -24,10 +25,12 @@ namespace HotelHup.APPLICATION.services.implementation
 
     public sealed class UserService : IUserService
     {
+        private readonly IHttpContextAccessor httpContextAccessor;
         private readonly IUserRepository _repository;
 
-        public UserService(IUserRepository repository)
+        public UserService(IHttpContextAccessor httpContextAccessor,IUserRepository repository)
         {
+            this.httpContextAccessor = httpContextAccessor;
             _repository = repository;
         }
 
@@ -240,7 +243,7 @@ namespace HotelHup.APPLICATION.services.implementation
                     user.IsActive
                 },
                 Reason = null,
-                CorrelationId = _currentUser.CorrelationId
+                CorrelationId = GetCorrelationId()
             }; var auditLog = CreateAuditLog(auditDto);
             IReadOnlyList<string> rolesname = exitroles.Select(r => r.Name).ToArray();
             var responsedatabase = await _repository.CreateWithRolesAsync(userparam,
@@ -324,17 +327,17 @@ namespace HotelHup.APPLICATION.services.implementation
             }
 
             user.UpdatedAt = DateTime.UtcNow;
-            var addaduitdto = new AddAuditLogDto 
+            var addaduitdto = new AddAuditLogDto
             {
-                Action="update",
-                 userid=actor.Id,
-                PropertyId=user.PropertyId,
-                Reason=null,
+                Action = "update",
+                userid = actor.Id,
+                PropertyId = user.PropertyId,
+                Reason = null,
                 TargetEntity = nameof(User),
                 TargetEntityId = user.Id,
-                OldValues=oldValues,
-                NewValues=newValues,    
-                CorrelationId="ds"
+                OldValues = oldValues,
+                NewValues = newValues,
+                CorrelationId = GetCorrelationId()
             };
             var audit = CreateAuditLog(addaduitdto);
             var updateResult = await _repository.UpdateWithAuditAsync(user, audit, cancellationToken);
@@ -382,7 +385,7 @@ namespace HotelHup.APPLICATION.services.implementation
             var auditlogdto = new AddAuditLogDto 
             {
                 Action="activate",
-                CorrelationId="d",
+                CorrelationId=GetCorrelationId(),
                 NewValues = new { IsActive = true },
                 OldValues = new { IsActive = false },
                 PropertyId=user.PropertyId,
@@ -426,7 +429,7 @@ namespace HotelHup.APPLICATION.services.implementation
             var auditlogdto = new AddAuditLogDto
             {
                 Action = "deactivate",
-                CorrelationId = "d",
+                CorrelationId = GetCorrelationId(),
                 NewValues = new { IsActive = true },
                 OldValues = new { IsActive = false },
                 PropertyId = user.PropertyId,
@@ -554,7 +557,7 @@ namespace HotelHup.APPLICATION.services.implementation
                     .Select(MapRole)
                     .ToList(),
                 Reason = null,
-                CorrelationId = null
+                CorrelationId = GetCorrelationId()
             };
 
             var auditLog = CreateAuditLog(auditLogDto);
@@ -614,7 +617,7 @@ namespace HotelHup.APPLICATION.services.implementation
         {
             return new ResponseStatus<T>(
                 message,
-                errors,
+                errors?.ToList(),
                 statusCode);
         }
         private ResponseStatus<T> Success<T>(
@@ -701,24 +704,37 @@ namespace HotelHup.APPLICATION.services.implementation
             {
                 Roles = roles;
                 ErrorMessage = errorMessage;
-                Errors = errors?.ToList() ?? Array.Empty<string>();
+                Errors = errors?.ToList() ?? new List<string>();
                 ErrorStatus = errorStatus;
             }
 
             public IReadOnlyList<Role> Roles { get; }
+
             public string? ErrorMessage { get; }
+
             public IReadOnlyList<string> Errors { get; }
+
             public int ErrorStatus { get; }
 
-            public static RoleValidationResult Success(IReadOnlyList<Role> roles) =>
-                new(roles);
+            public static RoleValidationResult Success(
+                IReadOnlyList<Role> roles)
+            {
+                return new RoleValidationResult(roles);
+            }
 
             public static RoleValidationResult Failure(
                 string message,
                 IEnumerable<string>? errors = null,
-                int status = 400) =>
-                new(Array.Empty<Role>(), message, errors, status);
+                int status = 400)
+            {
+                return new RoleValidationResult(
+                    Array.Empty<Role>(),
+                    message,
+                    errors,
+                    status);
+            }
         }
+ 
 
         private async Task<ResponseUserDto> MapAsync(
 
@@ -802,7 +818,7 @@ namespace HotelHup.APPLICATION.services.implementation
             {
                 statuscode = 400;
             }
-            return new ResponseStatus<T>(message, errors, statuscode);
+            return new ResponseStatus<T>(message,errors, statuscode);
         }
         private async Task<bool> IsWithinScopeAsync(
       User actor,
@@ -849,7 +865,24 @@ namespace HotelHup.APPLICATION.services.implementation
                 isactive = role.IsActive,
             };
         }
+        private string GetCorrelationId()
+        {
+            var httpContext = httpContextAccessor.HttpContext;
+           
+            if (httpContext is null)
+            {
+                return Guid.NewGuid().ToString();
+            }
 
+            var correlationId = httpContext.Request.Headers["X-Correlation-ID"].FirstOrDefault();
+
+            if (!string.IsNullOrWhiteSpace(correlationId))
+            {
+                return correlationId;
+            }
+
+            return httpContext.TraceIdentifier;
+        }
 
     }
 }
