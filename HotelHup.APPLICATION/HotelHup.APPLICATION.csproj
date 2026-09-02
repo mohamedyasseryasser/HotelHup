@@ -7,13 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\HotelHup.CORE\HotelHup.CORE.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="interfacesrepo\" />
-    <Folder Include="services\implementation\" />
-    <Folder Include="services\interfaces\" />
+    <ProjectReference Include="..\HotelHup.CORE\HotelHup.CORE.csproj" />
   </ItemGroup>
 
 </Project>

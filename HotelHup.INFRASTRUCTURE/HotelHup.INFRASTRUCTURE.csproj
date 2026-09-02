@@ -24,8 +24,4 @@
     <ProjectReference Include="..\HotelHup.CORE\HotelHup.CORE.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="repos\" />
-  </ItemGroup>
-
 </Project>

@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace HotelHup.INFRASTRUCTURE.Context
 {
-    public class hotelhupContext : IdentityDbContext<User>
+    public class hotelhupContext : IdentityDbContext<User,Role,string>
     {
 
         public hotelhupContext(DbContextOptions<hotelhupContext> options) : base(options)
@@ -365,12 +365,12 @@ namespace HotelHup.INFRASTRUCTURE.Context
                 entity.HasOne(x => x.User)
                     .WithMany(x => x.AuditLogs)
                     .HasForeignKey(x => x.UserId)
-                    .OnDelete(DeleteBehavior.SetNull);
+                    .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasOne(x => x.Property)
                     .WithMany(x => x.AuditLogs)
                     .HasForeignKey(x => x.PropertyId)
-                    .OnDelete(DeleteBehavior.SetNull);
+                    .OnDelete(DeleteBehavior.Restrict);
             });
             //user
             builder.Entity<User>(entity =>
@@ -378,6 +378,8 @@ namespace HotelHup.INFRASTRUCTURE.Context
                 entity.Property(x => x.FullName)
                     .HasMaxLength(200)
                     .IsRequired();
+                
+               
 
                 entity.HasOne(x => x.Property)
                     .WithMany(x => x.Users)
