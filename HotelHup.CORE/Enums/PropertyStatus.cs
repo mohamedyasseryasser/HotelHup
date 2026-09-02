@@ -18,6 +18,23 @@ namespace HotelHup.CORE.Enums
         Inactive
     }
 
+    public enum PolicyStatus
+    {
+        Active,
+        Inactive
+    }
+
+    public enum TaxType
+    {
+        Percentage,
+        FixedAmount
+    }
+
+    public enum DepositType
+    {
+        Percentage,
+        FixedAmount
+    }
     public enum ReservationStatus
     {
         Pending,

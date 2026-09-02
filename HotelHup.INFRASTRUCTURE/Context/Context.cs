@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection.Emit;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -18,7 +19,10 @@ namespace HotelHup.INFRASTRUCTURE.Context
 
         }
         public DbSet<Property> Properties => Set<Property>();
-
+        public DbSet<PropertySettings> PropertySettings => Set<PropertySettings>();
+        public DbSet<Tax> Taxes => Set<Tax>();
+        public DbSet<CancellationPolicy> CancellationPolicies => Set<CancellationPolicy>();
+        public DbSet<DepositPolicy> DepositPolicies => Set<DepositPolicy>();
         public DbSet<RoomType> RoomTypes => Set<RoomType>();
 
         public DbSet<Room> Rooms => Set<Room>();
@@ -54,9 +58,7 @@ namespace HotelHup.INFRASTRUCTURE.Context
         {
             base.OnModelCreating(builder);
 
-            //user :
-            //each user belong to one property
-            //each user has alot of auditlogs and alot of refreshtoken
+          
 
             //property :
             builder.Entity<Property>(entity =>
@@ -66,14 +68,34 @@ namespace HotelHup.INFRASTRUCTURE.Context
                     .HasMaxLength(200)
                     .IsRequired();
 
-                entity.Property(x => x.Currency)
-                    .HasMaxLength(10)
-                    .IsRequired();
-
-                entity.Property(x => x.TimeZone)
-                    .HasMaxLength(100)
-                    .IsRequired();
+               
             });
+
+            builder.Entity<Property>()
+       .HasOne(p => p.Settings)
+       .WithOne(ps => ps.Property)
+       .HasForeignKey<PropertySettings>(ps => ps.PropertyId)
+       .OnDelete(DeleteBehavior.Cascade);
+ 
+            builder.Entity<Tax>()
+                .HasOne(t => t.Property)
+                .WithMany(p => p.Taxes)
+                .HasForeignKey(t => t.PropertyId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+ 
+            builder.Entity<CancellationPolicy>()
+                .HasOne(cp => cp.Property)
+                .WithMany(p => p.CancellationPolicies)
+                .HasForeignKey(cp => cp.PropertyId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+ 
+            builder.Entity<DepositPolicy>()
+                .HasOne(dp => dp.Property)
+                .WithMany(p => p.DepositPolicies)
+                .HasForeignKey(dp => dp.PropertyId)
+                .OnDelete(DeleteBehavior.Restrict);
             //roomtype
 
             builder.Entity<RoomType>(entity =>
