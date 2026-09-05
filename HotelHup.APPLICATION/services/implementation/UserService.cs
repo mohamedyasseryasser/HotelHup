@@ -826,15 +826,15 @@ namespace HotelHup.APPLICATION.services.implementation
       CancellationToken cancellationToken)
         {
              if (actor is null || !actor.IsActive)
-            {
+             {
                 return false;
-            }
+             }
 
              if (actor.PropertyId.HasValue)
-            {
+             {
                 return targetPropertyId.HasValue &&
                        actor.PropertyId.Value == targetPropertyId.Value;
-            }
+             }
 
          
             var actorRoles = await _repository.GetRolesAsync(

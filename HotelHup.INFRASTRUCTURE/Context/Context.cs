@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 
 namespace HotelHup.INFRASTRUCTURE.Context
 {
-    public class hotelhupContext : IdentityDbContext<User,Role,string>
+    public class hotelhupContext : IdentityDbContext<User, Role, string>
     {
 
         public hotelhupContext(DbContextOptions<hotelhupContext> options) : base(options)
@@ -58,7 +58,7 @@ namespace HotelHup.INFRASTRUCTURE.Context
         {
             base.OnModelCreating(builder);
 
-          
+
 
             //property :
             builder.Entity<Property>(entity =>
@@ -67,30 +67,32 @@ namespace HotelHup.INFRASTRUCTURE.Context
                 entity.Property(x => x.Name)
                     .HasMaxLength(200)
                     .IsRequired();
-
-               
             });
-
+            builder.Entity<PropertySettings>(entity => {
+                entity.Property(x => x.RowVersion)
+        .IsRowVersion()
+        .IsConcurrencyToken();
+            });
             builder.Entity<Property>()
        .HasOne(p => p.Settings)
        .WithOne(ps => ps.Property)
        .HasForeignKey<PropertySettings>(ps => ps.PropertyId)
        .OnDelete(DeleteBehavior.Cascade);
- 
+
             builder.Entity<Tax>()
                 .HasOne(t => t.Property)
                 .WithMany(p => p.Taxes)
                 .HasForeignKey(t => t.PropertyId)
                 .OnDelete(DeleteBehavior.Restrict);
 
- 
+
             builder.Entity<CancellationPolicy>()
                 .HasOne(cp => cp.Property)
                 .WithMany(p => p.CancellationPolicies)
                 .HasForeignKey(cp => cp.PropertyId)
                 .OnDelete(DeleteBehavior.Restrict);
 
- 
+
             builder.Entity<DepositPolicy>()
                 .HasOne(dp => dp.Property)
                 .WithMany(p => p.DepositPolicies)
@@ -110,7 +112,7 @@ namespace HotelHup.INFRASTRUCTURE.Context
                 entity.HasIndex(x => x.Name)
                     .IsClustered(false).IsUnique();
 
-                 
+
 
                 entity.HasOne(x => x.Property)
                     .WithMany(x => x.RoomTypes)
@@ -120,7 +122,7 @@ namespace HotelHup.INFRASTRUCTURE.Context
             //room
             builder.Entity<Room>(entity =>
             {
-          
+
                 entity.HasKey(x => x.Id)
                     .IsClustered();
 
@@ -130,11 +132,11 @@ namespace HotelHup.INFRASTRUCTURE.Context
 
                 entity.Property(x => x.PricePerNight)
                     .HasPrecision(10, 2);
-                
+
                 entity.HasIndex(x => x.RoomNumber)
                     .IsUnique()
                     .IsClustered(false);
-               
+
                 entity.HasOne(x => x.RoomType)
                     .WithMany(x => x.Rooms)
                     .HasForeignKey(x => x.RoomTypeId)
@@ -217,18 +219,18 @@ namespace HotelHup.INFRASTRUCTURE.Context
 
             builder.Entity<RatePlan>(entity =>
             {
-               
+
                 entity.HasKey(x => x.id).IsClustered(true);
                 entity.Property(x => x.Price)
                     .HasPrecision(18, 2);
 
-                 entity.Property(x => x.Name)
-                    .HasMaxLength(100)
-                    .IsRequired();
+                entity.Property(x => x.Name)
+                   .HasMaxLength(100)
+                   .IsRequired();
 
 
-                 entity.Property(x => x.Rules)
-                    .HasMaxLength(2000);
+                entity.Property(x => x.Rules)
+                   .HasMaxLength(2000);
 
                 // Dates
                 entity.Property(x => x.ValidFrom)
@@ -400,8 +402,8 @@ namespace HotelHup.INFRASTRUCTURE.Context
                 entity.Property(x => x.FullName)
                     .HasMaxLength(200)
                     .IsRequired();
-                
-               
+
+
 
                 entity.HasOne(x => x.Property)
                     .WithMany(x => x.Users)
@@ -457,6 +459,7 @@ namespace HotelHup.INFRASTRUCTURE.Context
                     .HasForeignKey(x => x.PermissionId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
+
         }
     }
 }

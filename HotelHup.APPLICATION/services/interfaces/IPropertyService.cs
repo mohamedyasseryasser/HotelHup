@@ -1,5 +1,6 @@
 ﻿using HotelHup.APPLICATION.DTO.General;
 using HotelHup.APPLICATION.DTO.property;
+using HotelHup.CORE.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,10 +12,10 @@ namespace HotelHup.APPLICATION.services.interfaces
 
     public interface IPropertyService
     {
-        Task<ResponseStatus<PropertyListResponse>> GetListAsync(PropertyListRequest request, CancellationToken ct = default);
-        Task<ResponseStatus<PropertyResponse>> GetAsync(int id, CancellationToken ct = default);
-        Task<ResponseStatus<PropertyResponse>> CreateAsync(CreatePropertyRequest request, CancellationToken ct = default);
-        Task<ResponseStatus<PropertyResponse>> UpdateAsync(int id, UpdatePropertyRequest request, CancellationToken ct = default);
+        Task<ResponseStatus<PropertyListResponse>> GetListAsync(User user,PropertyListRequest request, CancellationToken ct = default);
+        Task<ResponseStatus<PropertyResponse>> GetAsync(User user,int id, CancellationToken ct = default);
+        Task<ResponseStatus<PropertyResponse>> CreateAsync(User CurrentUserLogin, CreatePropertyRequest request, CancellationToken ct = default);
+        Task<ResponseStatus<PropertyResponse>> UpdateAsync(User CurrentUserLogin,int id, UpdatePropertyRequest request, CancellationToken ct = default);
         Task<ResponseStatus<PropertyResponse>> ActivateAsync(int id, CancellationToken ct = default);
         Task<ResponseStatus<PropertyResponse>> DeactivateAsync(int id, DeactivatePropertyRequest request, CancellationToken ct = default);
         Task<ResponseStatus<PropertySettingsResponse>> GetSettingsAsync(int id, CancellationToken ct = default);

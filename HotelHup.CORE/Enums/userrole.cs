@@ -9,6 +9,7 @@ namespace HotelHup.CORE.Enums
     public enum UserRole
     {
         Admin,
-        Receptionist
+        Receptionist,
+        Manager
     }
 }
