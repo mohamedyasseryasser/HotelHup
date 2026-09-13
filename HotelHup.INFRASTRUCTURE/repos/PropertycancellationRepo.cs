@@ -159,25 +159,8 @@ namespace HotelHup.INFRASTRUCTURE.repos
             return (max ?? 0) + 1;
         }
 
-        public async Task<IReadOnlyList<DepositPolicy>> GetDepositPoliciesAsync(
-            int propertyId, CancellationToken ct = default)
-        {
-            return await _context.DepositPolicies
-                .Where(x => x.PropertyId == propertyId)
-                .Include(x => x.Versions)
-                .OrderByDescending(x => x.CurrentVersion)
-                .AsNoTracking()
-                .ToListAsync(ct);
-        }
-        public async Task AddAsync<TEntity>(
-            TEntity entity,
-            CancellationToken ct = default)
-            where TEntity : class
-        {
-            await _context.AddAsync(
-                entity,
-                ct);
-        }
+       
+      
 
         public Task AddAuditLogAsync(
             AddAuditLogDto dto,
@@ -216,37 +199,7 @@ namespace HotelHup.INFRASTRUCTURE.repos
 
             return Task.CompletedTask;
         }
-
-        public async Task SaveChangesAsync(
-            CancellationToken ct = default)
-        {
-            await _context.SaveChangesAsync(ct);
-        }
-
-        private IQueryable<Property> BuildQuery(
-            string? search,
-            PropertyStatus? status)
-        {
-            var query = _context.Properties
-                .AsQueryable();
-
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                var value = search.Trim();
-
-                query = query.Where(
-                    x =>
-                        x.Name.Contains(value) ||
-                        x.Code.Contains(value));
-            }
-
-            if (status.HasValue)
-            {
-                query = query.Where(
-                    x => x.Status == status.Value);
-            }
-
-            return query;
-        }
+ 
+ 
     }
 }

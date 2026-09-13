@@ -81,7 +81,7 @@ namespace HotelHup.API.Controllers
             }
             var result =
                 await _service.GetCancellationPoliciesAsync(
-                    propertyId,
+                    CurrentUserLogin.Data,propertyId,
                     ct);
 
             return Result(result);
@@ -151,7 +151,7 @@ namespace HotelHup.API.Controllers
                 await _service.UpdateCancellationPolicyAsync(
                    CurrentUserLogin.Data, propertyId,
                     policyId,
-                    request,
+                    request,ifmatch,
                     ct);
 
             return Result(result);

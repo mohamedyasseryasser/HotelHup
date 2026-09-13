@@ -8,6 +8,7 @@ using HotelHup.APPLICATION.interfacesrepo;
 using HotelHup.APPLICATION.services.interfaces;
 using HotelHup.CORE.Entities;
 using HotelHup.CORE.Enums;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
@@ -21,12 +22,14 @@ namespace HotelHup.APPLICATION.services.implementation
 {
     public class Cancellationpolicyservice : ICancellationPolicyService
     {
+        public IHttpContextAccessor HttpContextAccessor { get; }
         public IPropertyRepository PropertyRepository { get; }
         public IPropertyCancellationRepo _repo { get; }
         public IUserRepository repository { get; }
 
-        public Cancellationpolicyservice(IPropertyRepository propertyRepository,IPropertyCancellationRepo repo,IUserRepository repository)
+        public Cancellationpolicyservice(IHttpContextAccessor httpContextAccessor,IPropertyRepository propertyRepository,IPropertyCancellationRepo repo,IUserRepository repository)
         {
+            HttpContextAccessor = httpContextAccessor;
             PropertyRepository = propertyRepository;
             _repo = repo;
             repository = repository;
@@ -478,7 +481,7 @@ namespace HotelHup.APPLICATION.services.implementation
 
             try
             {
-                await _repo.SaveChangesAsync(ct);
+                await PropertyRepository.SaveChangesAsync(ct);
             }
             catch (DbUpdateConcurrencyException)
             {
@@ -669,7 +672,7 @@ namespace HotelHup.APPLICATION.services.implementation
 
             try
             {
-                await _repo.SaveChangesAsync(ct);
+                await PropertyRepository.SaveChangesAsync(ct);
             }
             catch (DbUpdateConcurrencyException)
             {
@@ -914,11 +917,27 @@ namespace HotelHup.APPLICATION.services.implementation
                 Reason =
                     reason,
 
-                CorrelationId =
-                    _http.HttpContext?.TraceIdentifier
+                CorrelationId = GetCorrelationId()
             };
         }
+        private string GetCorrelationId()
+        {
+            var httpContext = HttpContextAccessor.HttpContext;
 
+            if (httpContext is null)
+            {
+                return Guid.NewGuid().ToString();
+            }
+
+            var correlationId = httpContext.Request.Headers["X-Correlation-ID"].FirstOrDefault();
+
+            if (!string.IsNullOrWhiteSpace(correlationId))
+            {
+                return correlationId;
+            }
+
+            return httpContext.TraceIdentifier;
+        }
         private static string Clean(
             string value)
         {

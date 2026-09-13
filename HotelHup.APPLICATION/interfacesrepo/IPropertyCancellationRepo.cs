@@ -31,9 +31,7 @@ CancellationToken ct = default)
                 int policyId,
                 CancellationToken cancellationToken = default);
         Task<int> GetNextCancellationVersionAsync(int propertyId, int? policyId = null, CancellationToken cancellationToken = default);
-        Task SaveChangesAsync(CancellationToken cancellationToken = default);
-        Task AddAsync<TEntity>(TEntity entity, CancellationToken cancellationToken = default) where TEntity : class;
-        Task AddAuditLogAsync(AddAuditLogDto auditLog, CancellationToken cancellationToken = default);
+          Task AddAuditLogAsync(AddAuditLogDto auditLog, CancellationToken cancellationToken = default);
         Task<bool> CancellationPolicyNameExistsAsync(
     int propertyId,
     string normalizedName,
