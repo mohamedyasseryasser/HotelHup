@@ -10,6 +10,9 @@ namespace HotelHup.CORE.Enums
     {
         Admin,
         Receptionist,
-        Manager
+        Manager,
+        Housekeeper,
+        Accountant,
+        Maintenance,
     }
 }

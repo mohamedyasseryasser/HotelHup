@@ -13,7 +13,11 @@ public class Property : BaseEntity
     public string Code { get; set; } = string.Empty;
     [MaxLength(1000)]
     public string? Description { get; set; }
-     [Required]
+    [Timestamp]
+    public byte[] RowVersion { get; set; }
+    = Array.Empty<byte>();
+
+    [Required]
     public PropertyStatus Status { get; set; } = PropertyStatus.Active;
     public ICollection<Room> Rooms { get; set; } = new List<Room>();
     public ICollection<RoomType> RoomTypes { get; set; } = new List<RoomType>();

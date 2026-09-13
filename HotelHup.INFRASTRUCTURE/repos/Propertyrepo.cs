@@ -1,12 +1,12 @@
-﻿using System.Text.Json;
-
-using HotelHup.APPLICATION.DTO.aduitlog;
+﻿using HotelHup.APPLICATION.DTO.aduitlog;
 using HotelHup.APPLICATION.interfacesrepo;
 using HotelHup.CORE.Entities;
 using HotelHup.CORE.Enums;
 using HotelHup.INFRASTRUCTURE.Context;
-
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using System.Text.Json;
+using System.Threading;
 
 namespace HotelHup.INFRASTRUCTURE.repos
 {
@@ -24,11 +24,14 @@ namespace HotelHup.INFRASTRUCTURE.repos
             CancellationToken ct = default)
         {
             return await _context.Properties
-                .AsNoTracking()
-                .Include(x => x.Settings)
-                .SingleOrDefaultAsync(
-                    x => x.ID == id,
-                    ct);
+        .AsNoTracking()
+        .Include(x => x.Settings)
+        .Include(x => x.Taxes)
+        .Include(x => x.CancellationPolicies)
+        .Include(x => x.DepositPolicies)
+        .SingleOrDefaultAsync(
+            x => x.ID == id,
+            ct);
         }
 
         public async Task<Property?> GetTrackedByIdAsync(
@@ -41,36 +44,41 @@ namespace HotelHup.INFRASTRUCTURE.repos
                     x => x.ID == id,
                     ct);
         }
+        public async Task<IDbContextTransaction>
+     BeginTransactionAsync(
+         CancellationToken cancellationToken = default)
+        {
+            return await _context.Database
+                .BeginTransactionAsync(
+                    cancellationToken);
+        }
 
         public async Task<IReadOnlyList<Property>> GetListAsync(
-            string? search,
-            PropertyStatus? status,
-            string sortBy,
-            bool descending,
-            int skip,
-            int take,
-            CancellationToken ct = default)
+       string? search,
+       PropertyStatus? status,
+       PropertySortBy sortBy,
+       bool descending,
+       int skip,
+       int take,
+       CancellationToken ct = default)
         {
             var query = BuildQuery(
                 search,
                 status);
 
-            query = (sortBy ?? "name")
-                .Trim()
-                .ToLowerInvariant()
-                . switch
+            query = sortBy switch
             {
-                "code" =>
+                PropertySortBy.Code =>
                     descending
                         ? query.OrderByDescending(x => x.Code)
                         : query.OrderBy(x => x.Code),
 
-                "createdat" =>
+                PropertySortBy.CreatedAt =>
                     descending
                         ? query.OrderByDescending(x => x.CreatedAt)
                         : query.OrderBy(x => x.CreatedAt),
 
-                "status" =>
+                PropertySortBy.Status =>
                     descending
                         ? query.OrderByDescending(x => x.Status)
                         : query.OrderBy(x => x.Status),
@@ -87,7 +95,37 @@ namespace HotelHup.INFRASTRUCTURE.repos
                 .AsNoTracking()
                 .ToListAsync(ct);
         }
-
+        public async Task<int>
+    CountActiveCancellationPoliciesAsync(
+        int propertyId,
+        CancellationToken cancellationToken = default)
+        {
+            return await _context.CancellationPolicies
+                .AsNoTracking()
+                .CountAsync(
+                    x =>
+                        x.PropertyId == propertyId &&
+                        x.Status == PolicyStatus.Active,
+                    cancellationToken);
+        }
+        public async Task<bool>
+    HasActiveReservationsUsingCancellationPolicyAsync(
+        int propertyId,
+        int policyId,
+        CancellationToken cancellationToken = default)
+        {
+            return await _context.Reservations
+                .AsNoTracking()
+                .AnyAsync(
+                    x =>
+                        x.PropertyId == propertyId &&
+                        x.CancellationPolicyId == policyId &&
+                        (
+                            x.Status == ReservationStatus.Confirmed ||
+                            x.Status == ReservationStatus.CheckedIn
+                        ),
+                    cancellationToken);
+        }
         public async Task<int> CountAsync(
             string? search,
             PropertyStatus? status,
@@ -335,116 +373,216 @@ namespace HotelHup.INFRASTRUCTURE.repos
                     ct);
         }
 
-        public async Task<IReadOnlyList<CancellationPolicy>>
-            GetCancellationPoliciesAsync(
-                int propertyId,
-                CancellationToken ct = default)
+        public async Task<IReadOnlyList<CancellationPolicy>> GetCancellationPoliciesAsync(
+            int propertyId, CancellationToken ct = default)
         {
-            var policies = await _context.CancellationPolicies
-                .Where(x => x.PropertyId == propertyId)
-                .OrderByDescending(x => x.Version)
-                .AsNoTracking()
-                .ToListAsync(ct);
-
-            return policies;
+            return await _context.CancellationPolicies
+         .AsNoTracking()
+         .Where(x => x.PropertyId == propertyId)
+         .Include(x => x.Versions)
+         .OrderByDescending(x => x.CurrentVersion)
+         .ThenBy(x => x.Name)
+         .ToListAsync(ct);
         }
+        public async Task<bool> CancellationVersionOverlapsAsync(
+    int cancellationPolicyId,
+    DateTimeOffset validFrom,
+    DateTimeOffset? validTo,
+    CancellationToken cancellationToken = default)
+        {
+            var requestedTo = validTo ?? DateTimeOffset.MaxValue;
 
+            return await _context.cancellationPolicyVersions
+                .AsNoTracking()
+                .AnyAsync(
+                    x =>
+                        x.CancellationPolicyId == cancellationPolicyId &&
+                        x.ValidFrom < requestedTo &&
+                        (x.ValidTo ?? DateTimeOffset.MaxValue) > validFrom,
+                    cancellationToken);
+        }
+        public async Task AddCancellationPolicyWithAuditAsync(
+    CancellationPolicy policy,
+    AddAuditLogDto audit,
+    CancellationToken ct = default)
+        {
+            await using var transaction =
+                await _context.Database.BeginTransactionAsync(ct);
+
+            try
+            {
+                await _context.CancellationPolicies.AddAsync(
+                    policy,
+                    ct);
+                await  AddAuditLogAsync(audit,ct);
+
+                await _context.SaveChangesAsync(ct);
+
+                await transaction.CommitAsync(ct);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(ct);
+                throw;
+            }
+        }
         public async Task<CancellationPolicy?> GetCancellationPolicyAsync(
-            int propertyId,
-            int policyId,
-            CancellationToken ct = default)
+            int propertyId, int policyId, CancellationToken ct = default)
+        {
+            return await _context.CancellationPolicies
+                .Where(x => x.PropertyId == propertyId && x.Id == policyId)
+                .Include(x => x.Versions)
+                .AsNoTracking()
+                .SingleOrDefaultAsync(ct);
+        }
+        public async Task<bool> CancellationPolicyNameExistsAsync(
+    int propertyId,
+    string normalizedName,
+    CancellationToken cancellationToken = default)
         {
             return await _context.CancellationPolicies
                 .AsNoTracking()
-                .SingleOrDefaultAsync(
+                .AnyAsync(
                     x =>
                         x.PropertyId == propertyId &&
-                        x.Id == policyId,
-                    ct);
+                        x.Name.ToUpper() == normalizedName,
+                    cancellationToken);
         }
 
         public async Task<CancellationPolicy?>
-            GetTrackedCancellationPolicyAsync(
-                int propertyId,
-                int policyId,
-                CancellationToken ct = default)
+         GetTrackedCancellationPolicyAsync(
+             int propertyId,
+             int policyId,
+             CancellationToken cancellationToken = default)
         {
             return await _context.CancellationPolicies
+                .Where(x =>
+                    x.PropertyId == propertyId &&
+                    x.Id == policyId)
+                .Include(x => x.Versions)
                 .SingleOrDefaultAsync(
-                    x =>
-                        x.PropertyId == propertyId &&
-                        x.Id == policyId,
-                    ct);
+                    cancellationToken);
         }
+
 
         public async Task<int> GetNextCancellationVersionAsync(
-            int propertyId,
-            CancellationToken ct = default)
+            int propertyId, int? policyId = null, CancellationToken ct = default)
         {
-            var maxVersion = await _context.CancellationPolicies
-                .Where(x => x.PropertyId == propertyId)
-                .MaxAsync(
-                    x => (int?)x.Version,
-                    ct);
-
-            return (maxVersion ?? 0) + 1;
+            var query = _context.cancellationPolicyVersions.AsQueryable();
+            if (policyId.HasValue)
+                query = query.Where(x => x.CancellationPolicyId == policyId.Value);
+            else
+                query = query.Where(x => x.CancellationPolicy.PropertyId == propertyId);
+            var max = await query.MaxAsync(x => (int?)x.Version, ct);
+            return (max ?? 0) + 1;
         }
 
-        public async Task<IReadOnlyList<DepositPolicy>>
-            GetDepositPoliciesAsync(
-                int propertyId,
-                CancellationToken ct = default)
+        public async Task<IReadOnlyList<DepositPolicy>> GetDepositPoliciesAsync(
+            int propertyId, CancellationToken ct = default)
         {
-            var policies = await _context.DepositPolicies
+            return await _context.DepositPolicies
                 .Where(x => x.PropertyId == propertyId)
-                .OrderByDescending(x => x.Version)
+                .Include(x => x.Versions)
+                .OrderByDescending(x => x.CurrentVersion)
                 .AsNoTracking()
                 .ToListAsync(ct);
-
-            return policies;
         }
 
         public async Task<DepositPolicy?> GetDepositPolicyAsync(
-            int propertyId,
-            int policyId,
-            CancellationToken ct = default)
+            int propertyId, int policyId, CancellationToken ct = default)
         {
             return await _context.DepositPolicies
+                .Where(x => x.PropertyId == propertyId && x.Id == policyId)
+                .Include(x => x.Versions)
                 .AsNoTracking()
-                .SingleOrDefaultAsync(
-                    x =>
-                        x.PropertyId == propertyId &&
-                        x.Id == policyId,
+                .SingleOrDefaultAsync(ct);
+        }
+        public async Task AddDepositPolicyWithAuditAsync(
+    DepositPolicy policy,
+    AddAuditLogDto dto,
+    CancellationToken ct = default)
+        {
+            await using var transaction =
+                await _context.Database.BeginTransactionAsync(ct);
+
+            try
+            {
+                await _context.DepositPolicies.AddAsync(
+                    policy,
                     ct);
+
+             
+                await _context.SaveChangesAsync(ct);
+
+                var auditLog = new AuditLog
+                {
+                    UserId = dto.userid,
+                    PropertyId = dto.PropertyId,
+
+                    EntityName =
+                        string.IsNullOrWhiteSpace(dto.TargetEntity)
+                            ? "Unknown"
+                            : dto.TargetEntity,
+
+                    EntityId =
+                        dto.TargetEntityId == "pending"
+                            ? policy.Id.ToString()
+                            : dto.TargetEntityId,
+
+                    Action = dto.Action,
+
+                    OldValues =
+                        dto.OldValues is null
+                            ? null
+                            : JsonSerializer.Serialize(dto.OldValues),
+
+                    NewValues =
+                        dto.NewValues is null
+                            ? null
+                            : JsonSerializer.Serialize(dto.NewValues),
+
+                    Reason = dto.Reason,
+                    CorrelationId = dto.CorrelationId,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    CreatedBy = dto.userid
+                };
+
+                await _context.AuditLogs.AddAsync(
+                    auditLog,
+                    ct);
+
+                await _context.SaveChangesAsync(ct);
+
+                await transaction.CommitAsync(ct);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(ct);
+                throw;
+            }
         }
 
-        public async Task<DepositPolicy?>
-            GetTrackedDepositPolicyAsync(
-                int propertyId,
-                int policyId,
-                CancellationToken ct = default)
+        public async Task<DepositPolicy?> GetTrackedDepositPolicyAsync(
+            int propertyId, int policyId, CancellationToken ct = default)
         {
             return await _context.DepositPolicies
-                .SingleOrDefaultAsync(
-                    x =>
-                        x.PropertyId == propertyId &&
-                        x.Id == policyId,
-                    ct);
+                .Where(x => x.PropertyId == propertyId && x.Id == policyId)
+                .Include(x => x.Versions)
+                .SingleOrDefaultAsync(ct);
         }
 
         public async Task<int> GetNextDepositVersionAsync(
-            int propertyId,
-            CancellationToken ct = default)
+            int propertyId, int? policyId = null, CancellationToken ct = default)
         {
-            var maxVersion = await _context.DepositPolicies
-                .Where(x => x.PropertyId == propertyId)
-                .MaxAsync(
-                    x => (int?)x.Version,
-                    ct);
-
-            return (maxVersion ?? 0) + 1;
+            var query = _context.depositPolicyVersions.AsQueryable();
+            if (policyId.HasValue)
+                query = query.Where(x => x.DepositId == policyId.Value);
+            else
+                query = query.Where(x => x.Deposit.PropertyId == propertyId);
+            var max = await query.MaxAsync(x => (int?)x.Version, ct);
+            return (max ?? 0) + 1;
         }
-
+ 
         public async Task AddAsync<TEntity>(
             TEntity entity,
             CancellationToken ct = default)
@@ -523,6 +661,34 @@ namespace HotelHup.INFRASTRUCTURE.repos
             }
 
             return query;
+        }
+        public async Task<bool> DepositVersionOverlapsAsync(
+int depositPolicyId,
+DateTimeOffset validFrom,
+DateTimeOffset? validTo,
+int? excludedVersionId = null,
+CancellationToken ct = default)
+        {
+            var requestedFrom =
+                validFrom.ToUniversalTime();
+
+            var requestedTo =
+                (validTo ?? DateTimeOffset.MaxValue)
+                .ToUniversalTime();
+
+            return await _context.depositPolicyVersions
+                .AsNoTracking()
+                .Where(x =>
+                    x.DepositId == depositPolicyId)
+                .Where(x =>
+                    !excludedVersionId.HasValue ||
+                    x.Id != excludedVersionId.Value)
+                .AnyAsync(
+                    x =>
+                        x.ValidFrom < requestedTo &&
+                        (x.ValidTo ?? DateTimeOffset.MaxValue)
+                            > requestedFrom,
+                    ct);
         }
     }
 }

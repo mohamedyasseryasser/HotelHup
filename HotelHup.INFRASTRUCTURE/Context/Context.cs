@@ -21,8 +21,14 @@ namespace HotelHup.INFRASTRUCTURE.Context
         public DbSet<Property> Properties => Set<Property>();
         public DbSet<PropertySettings> PropertySettings => Set<PropertySettings>();
         public DbSet<Tax> Taxes => Set<Tax>();
+        public DbSet<ReservationTaxSnapshot> reservationTaxSnapshots => Set<ReservationTaxSnapshot>();
+
         public DbSet<CancellationPolicy> CancellationPolicies => Set<CancellationPolicy>();
+        public DbSet<CancellationPolicyVersion> cancellationPolicyVersions => Set<CancellationPolicyVersion>();
+
         public DbSet<DepositPolicy> DepositPolicies => Set<DepositPolicy>();
+        public DbSet<DepositPolicyVersion> depositPolicyVersions => Set<DepositPolicyVersion>();
+
         public DbSet<RoomType> RoomTypes => Set<RoomType>();
 
         public DbSet<Room> Rooms => Set<Room>();
@@ -67,37 +73,249 @@ namespace HotelHup.INFRASTRUCTURE.Context
                 entity.Property(x => x.Name)
                     .HasMaxLength(200)
                     .IsRequired();
+                entity.Property(x => x.RowVersion)
+       .IsRowVersion()
+       .IsConcurrencyToken();
+
+                entity.HasOne(p=>p.Settings).
+                WithOne(ps => ps.Property)
+                .HasForeignKey<PropertySettings>(ps => ps.PropertyId)
+                .OnDelete(DeleteBehavior.Cascade);
             });
+             //propertysettings
             builder.Entity<PropertySettings>(entity => {
                 entity.Property(x => x.RowVersion)
-        .IsRowVersion()
-        .IsConcurrencyToken();
+                .IsRowVersion()
+                 .IsConcurrencyToken();
             });
-            builder.Entity<Property>()
-       .HasOne(p => p.Settings)
-       .WithOne(ps => ps.Property)
-       .HasForeignKey<PropertySettings>(ps => ps.PropertyId)
-       .OnDelete(DeleteBehavior.Cascade);
 
+            //tax
             builder.Entity<Tax>()
                 .HasOne(t => t.Property)
                 .WithMany(p => p.Taxes)
                 .HasForeignKey(t => t.PropertyId)
                 .OnDelete(DeleteBehavior.Restrict);
+            builder.Entity<Tax>(entity =>
+            {
+                entity.HasIndex(t=>t.Code).
+                IsUnique().
+                IsClustered(false);
+                entity.Property(x => x.RowVersion)
+     .IsRowVersion()
+     .IsConcurrencyToken();
+                entity.HasIndex(t=>t.Name).
+                IsUnique().
+                IsClustered(false);
 
 
-            builder.Entity<CancellationPolicy>()
-                .HasOne(cp => cp.Property)
-                .WithMany(p => p.CancellationPolicies)
-                .HasForeignKey(cp => cp.PropertyId)
-                .OnDelete(DeleteBehavior.Restrict);
+                entity.HasMany(x => x.ReservationTaxSnapshots)
+                    .WithOne(x => x.Tax)
+                    .HasForeignKey(x => x.TaxId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+            //resrvationtaxsnapshot
+            builder.Entity<ReservationTaxSnapshot>(entity =>
+            {
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.TaxCode)
+                    .HasMaxLength(50)
+                    .IsRequired();
+
+                entity.Property(x => x.TaxName)
+                    .HasMaxLength(150)
+                    .IsRequired();
+
+                entity.Property(x => x.Rate)
+                    .HasPrecision(5, 2);
+
+                entity.Property(x => x.TaxableAmount)
+                    .HasPrecision(18, 2);
+
+                entity.Property(x => x.TaxAmount)
+                    .HasPrecision(18, 2);
+
+                entity.Property(x => x.TaxValidFrom)
+                    .IsRequired();
+
+                entity.HasOne(x => x.Reservation)
+                    .WithMany(x => x.ReservationTaxSnapshots)
+                    .HasForeignKey(x => x.ReservationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(x => x.Tax)
+                    .WithMany(x => x.ReservationTaxSnapshots)
+                    .HasForeignKey(x => x.TaxId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(x => new
+                {
+                    x.ReservationId,
+                    x.TaxId
+                })
+                .IsUnique();
+
+                entity.HasIndex(x => x.ReservationId);
+
+                entity.HasIndex(x => x.TaxId);
+            });
+
+            builder.Entity<CancellationPolicy>(entity =>
+            {
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.Name)
+                    .IsRequired()
+                    .HasMaxLength(150);
+
+                entity.Property(x => x.Description)
+                    .HasMaxLength(1000);
+
+                entity.Property(x => x.CurrentVersion)
+                    .HasDefaultValue(1);
+
+                entity.Property(x => x.Status)
+                    .IsRequired();
+
+                entity.Property(x => x.RowVersion)
+                    .IsRowVersion()
+                    .IsConcurrencyToken();
+
+                entity.HasOne(x => x.Property)
+                    .WithMany(x => x.CancellationPolicies)
+                    .HasForeignKey(x => x.PropertyId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasMany(x => x.Versions)
+                    .WithOne(x => x.CancellationPolicy)
+                    .HasForeignKey(x => x.CancellationPolicyId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasMany(x => x.Reservations)
+                    .WithOne(x => x.CancellationPolicy)
+                    .HasForeignKey(x => x.CancellationPolicyId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(x => new
+                {
+                    x.PropertyId,
+                    x.Name
+                })
+                .IsUnique();
+            });
+
+            builder.Entity<CancellationPolicyVersion>(entity =>
+            {
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.Rules)
+                    .HasMaxLength(4000)
+                    .IsRequired();
+
+                entity.Property(x => x.CancellationFeePercentage)
+                    .HasPrecision(5, 2);
+
+                entity.Property(x => x.FixedCancellationFee)
+                    .HasPrecision(18, 2);
+
+                entity.HasIndex(x => new
+                {
+                    x.CancellationPolicyId,
+                    x.Version
+                })
+                .IsUnique();
+
+                entity.HasIndex(x => new
+                {
+                    x.CancellationPolicyId,
+                    x.ValidFrom,
+                    x.ValidTo
+                });
+
+                entity.HasOne(x => x.CancellationPolicy)
+                    .WithMany(x => x.Versions)
+                    .HasForeignKey(x => x.CancellationPolicyId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasMany(x => x.Reservations)
+                    .WithOne(x => x.CancellationPolicyVersion)
+                    .HasForeignKey(x => x.CancellationPolicyVersionId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
 
 
-            builder.Entity<DepositPolicy>()
-                .HasOne(dp => dp.Property)
-                .WithMany(p => p.DepositPolicies)
-                .HasForeignKey(dp => dp.PropertyId)
-                .OnDelete(DeleteBehavior.Restrict);
+            // Deposit
+            builder.Entity<DepositPolicy>(entity =>
+            {
+                entity.HasKey(x => x.Id);
+
+                // Name
+                entity.Property(x => x.Name)
+                    .IsRequired()
+                    .HasMaxLength(150);
+
+                // Decimal precision
+                entity.Property(x => x.Amount)
+                    .HasPrecision(18, 2);
+
+                entity.Property(x => x.Percentage)
+                    .HasPrecision(5, 2);
+
+                // Default values
+                entity.Property(x => x.IsActive)
+                    .HasDefaultValue(true);
+
+                entity.Property(x => x.CurrentVersion)
+                    .HasDefaultValue(1);
+
+                entity.Property(x => x.RowVersion)
+                       .IsRowVersion()
+                       .IsConcurrencyToken();
+
+                entity.HasOne(x => x.Property)
+                    .WithMany(x => x.DepositPolicies)
+                    .HasForeignKey(x => x.PropertyId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(x => new
+                {
+                    x.PropertyId,
+                    x.Name
+                }).IsClustered(false);
+            });
+
+
+             // DepositVersion
+ 
+            builder.Entity<DepositPolicyVersion>(entity =>
+            {
+                entity.HasKey(x => x.Id);
+
+                // Name
+                entity.Property(x => x.Name)
+                    .IsRequired()
+                    .HasMaxLength(150);
+
+                // Decimal precision
+                entity.Property(x => x.Amount)
+                    .HasPrecision(18, 2);
+
+                entity.Property(x => x.Percentage)
+                    .HasPrecision(5, 2);
+ 
+                entity.HasOne(x => x.Deposit)
+                    .WithMany(x => x.Versions)
+                    .HasForeignKey(x => x.DepositId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(x => new
+                {
+                    x.DepositId,
+                    x.Version
+                }).IsClustered(false)
+                .IsUnique();
+            });
+  
             //roomtype
 
             builder.Entity<RoomType>(entity =>
@@ -174,6 +392,8 @@ namespace HotelHup.INFRASTRUCTURE.Context
             //reservation
             builder.Entity<Reservation>(entity =>
             {
+                entity.HasKey(x => x.Id);
+
                 entity.Property(x => x.TotalAmount)
                     .HasPrecision(18, 2);
 
@@ -186,15 +406,47 @@ namespace HotelHup.INFRASTRUCTURE.Context
                 entity.Property(x => x.FeeAmount)
                     .HasPrecision(18, 2);
 
+                entity.Property(x => x.CancellationPolicySnapshot)
+                    .HasColumnType("nvarchar(max)");
+
+                entity.Property(x => x.RateSnapshot)
+                    .HasColumnType("nvarchar(max)");
+
+                entity.HasMany(x => x.ReservationTaxSnapshots)
+                    .WithOne(x => x.Reservation)
+                    .HasForeignKey(x => x.ReservationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(x => x.Property)
+                    .WithMany(x => x.Reservations)
+                    .HasForeignKey(x => x.PropertyId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
                 entity.HasOne(x => x.Guest)
                     .WithMany(x => x.Reservations)
                     .HasForeignKey(x => x.GuestId)
                     .OnDelete(DeleteBehavior.Restrict);
 
-                entity.HasOne(x => x.Property)
+                entity.HasOne(x => x.CancellationPolicy)
                     .WithMany(x => x.Reservations)
-                    .HasForeignKey(x => x.PropertyId)
+                    .HasForeignKey(x => x.CancellationPolicyId)
                     .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(x => x.CancellationPolicyVersion)
+                    .WithMany(x => x.Reservations)
+                    .HasForeignKey(x => x.CancellationPolicyVersionId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(x => x.PropertyId);
+
+                entity.HasIndex(x => new
+                {
+                    x.PropertyId,
+                    x.Status
+                });
+
+                entity.HasIndex(x => x.CancellationPolicyId);
+
+                entity.HasIndex(x => x.CancellationPolicyVersionId);
             });
             //reservationroom
             builder.Entity<ReservationRoom>(entity =>

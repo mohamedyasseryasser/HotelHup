@@ -19,5 +19,9 @@ public class Tax : BaseEntity
     public bool IsActive { get; set; } = true;
     public DateTimeOffset ValidFrom { get; set; }
     public DateTimeOffset? ValidTo { get; set; }
+    [Timestamp]
+    public byte[] RowVersion { get; set; }
+       = Array.Empty<byte>();
     public Property Property { get; set; } = null!;
+    public ICollection<ReservationTaxSnapshot> ReservationTaxSnapshots { get; set; }= new HashSet<ReservationTaxSnapshot>();
 }

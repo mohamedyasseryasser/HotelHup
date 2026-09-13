@@ -1,6 +1,11 @@
 ﻿using HotelHup.APPLICATION.Constant;
 using HotelHup.APPLICATION.DTO.General;
 using HotelHup.APPLICATION.DTO.property;
+using HotelHup.APPLICATION.DTO.property.propertycancellationdtos;
+using HotelHup.APPLICATION.DTO.property.propertydepositdtos;
+using HotelHup.APPLICATION.DTO.property.propertydto;
+using HotelHup.APPLICATION.DTO.property.propertysettingdto;
+using HotelHup.APPLICATION.DTO.property.propertytaxdto;
 using HotelHup.APPLICATION.services.interfaces;
 using HotelHup.CORE.Entities;
 using Microsoft.AspNetCore.Authorization;
@@ -95,10 +100,7 @@ namespace HotelHup.API.Controllers
         public async Task<IActionResult> Get(
             int id,
             CancellationToken ct)
-        {  //modelstate validation
-            var validationResult = ValidateModelState();
-            if (validationResult is not null)
-                return validationResult;
+        {   
             //authentaction check
             var CurrentUserLogin = await GetCurrentuserLogeined();
             if (!CurrentUserLogin.Success || CurrentUserLogin.Data == null)
@@ -134,7 +136,7 @@ namespace HotelHup.API.Controllers
         [HttpPatch("{id:int}")]
         [Authorize(Policy = Permissions.Properties.Update)]
         public async Task<IActionResult> Update(
-            int id,
+            int id,string ifmatch,
             UpdatePropertyRequest request,                            
             CancellationToken ct)
         { 
@@ -156,10 +158,16 @@ namespace HotelHup.API.Controllers
         [HttpPost("{id:int}/activate")]
         [Authorize(Policy = Permissions.Properties.Activate)]          
         public async Task<IActionResult> Activate(                      
-            int id,
+          [FromBody]  string expected,int id,
             CancellationToken ct)
-        {                                                               
-            var result = await _service.ActivateAsync(id, ct);    
+        {
+            //authentaction check
+            var CurrentUserLogin = await GetCurrentuserLogeined();
+            if (!CurrentUserLogin.Success || CurrentUserLogin.Data == null)
+            {
+                return Result(CurrentUserLogin);
+            }
+            var result = await _service.ActivateAsync(expected,CurrentUserLogin.Data,id, ct);    
 
             return Result(result);
         }
@@ -167,11 +175,17 @@ namespace HotelHup.API.Controllers
         [HttpPost("{id:int}/deactivate")]
         [Authorize(Policy = Permissions.Properties.Deactivate)]
         public async Task<IActionResult> Deactivate(
-            int id,
+           [FromBody] string expected,int id,
             DeactivatePropertyRequest request,
             CancellationToken ct)
         {
-            var result = await _service.DeactivateAsync(id, request, ct);
+            //authentaction check
+            var CurrentUserLogin = await GetCurrentuserLogeined();
+            if (!CurrentUserLogin.Success || CurrentUserLogin.Data == null)
+            {
+                return Result(CurrentUserLogin);
+            }
+            var result = await _service.DeactivateAsync(expected,CurrentUserLogin.Data, id,request, ct);
 
             return Result(result);
         }
@@ -182,226 +196,40 @@ namespace HotelHup.API.Controllers
             int id,
             CancellationToken ct)
         {
-            var result = await _service.GetSettingsAsync(id, ct);
-
+            //authentaction check
+            var CurrentUserLogin = await GetCurrentuserLogeined();
+            if (!CurrentUserLogin.Success || CurrentUserLogin.Data == null)
+            {
+                return Result(CurrentUserLogin);
+            }
+            var result = await _service.GetSettingsAsync(CurrentUserLogin.Data,id, ct);
             return Result(result);
         }
 
         [HttpPut("{id:int}/settings")]
         [Authorize(Policy = Permissions.Properties.Update)]
         public async Task<IActionResult> UpdateSettings(
-            int id,
+            int id,string ifmatch,
             UpdatePropertySettingsRequest request,
             CancellationToken ct)
-        {
-            var result = await _service.UpdateSettingsAsync(
-                id,
-                request,
-                ct);
+        { 
+            //modelstate validation
+            var validationResult = ValidateModelState();
+            if (validationResult is not null)
+                return validationResult;
+            //authentaction check
+            var CurrentUserLogin = await GetCurrentuserLogeined();
+            if (!CurrentUserLogin.Success || CurrentUserLogin.Data == null)
+            {
+                return Result(CurrentUserLogin);
+            }
+            var result = await _service.UpdateSettingsAsync(CurrentUserLogin.Data,id,ifmatch,request,ct);
 
             return Result(result);
         }
-
+ 
         // =========================
-        // Taxes
-        // =========================
-
-        [HttpGet("{propertyId:int}/taxes")]
-        [Authorize(Policy = Permissions.Properties.Read)]
-        public async Task<IActionResult> Taxes(
-            int propertyId,
-            CancellationToken ct)
-        {
-            var result = await _service.GetTaxesAsync(propertyId, ct);
-
-            return Result(result);
-        }
-
-        [HttpGet("{propertyId:int}/taxes/{taxId:int}")]
-        [Authorize(Policy = Permissions.Properties.Read)]
-        public async Task<IActionResult> Tax(
-            int propertyId,
-            int taxId,
-            CancellationToken ct)
-        {
-            var result = await _service.GetTaxAsync(
-                propertyId,
-                taxId,
-                ct);
-
-            return Result(result);
-        }
-
-        [HttpPost("{propertyId:int}/taxes")]
-        [Authorize(Policy = Permissions.Properties.Update)]
-        public async Task<IActionResult> CreateTax(
-            int propertyId,
-            CreateTaxRequest request,
-            CancellationToken ct)
-        {
-            var result = await _service.CreateTaxAsync(
-                propertyId,
-                request,
-                ct);
-
-            return Result(result);
-        }
-
-        [HttpPatch("{propertyId:int}/taxes/{taxId:int}")]
-        [Authorize(Policy = Permissions.Properties.Update)]
-        public async Task<IActionResult> UpdateTax(
-            int propertyId,
-            int taxId,
-            UpdateTaxRequest request,
-            CancellationToken ct)
-        {
-            var result = await _service.UpdateTaxAsync(
-                propertyId,
-                taxId,
-                request,
-                ct);
-
-            return Result(result);
-        }
-
-        [HttpPost("{propertyId:int}/taxes/{taxId:int}/activate")]
-        [Authorize(Policy = Permissions.Properties.Update)]
-        public async Task<IActionResult> ActivateTax(
-            int propertyId,
-            int taxId,
-            CancellationToken ct)
-        {
-            var result = await _service.SetTaxStatusAsync(
-                propertyId,
-                taxId,
-                true,
-                ct);
-
-            return Result(result);
-        }
-
-        [HttpPost("{propertyId:int}/taxes/{taxId:int}/deactivate")]
-        [Authorize(Policy = Permissions.Properties.Update)]
-        public async Task<IActionResult> DeactivateTax(
-            int propertyId,
-            int taxId,
-            CancellationToken ct)
-        {
-            var result = await _service.SetTaxStatusAsync(
-                propertyId,
-                taxId,
-                false,
-                ct);
-
-            return Result(result);
-        }
-
-        // =========================
-        // Cancellation Policies
-        // =========================
-
-        [HttpGet("{propertyId:int}/cancellation-policies")]
-        [Authorize(Policy = Permissions.Properties.Read)]
-        public async Task<IActionResult> CancellationPolicies(
-            int propertyId,
-            CancellationToken ct)
-        {
-            var result =
-                await _service.GetCancellationPoliciesAsync(
-                    propertyId,
-                    ct);
-
-            return Result(result);
-        }
-
-        [HttpGet("{propertyId:int}/cancellation-policies/{policyId:int}")]
-        [Authorize(Policy = Permissions.Properties.Read)]
-        public async Task<IActionResult> CancellationPolicy(
-            int propertyId,
-            int policyId,
-            CancellationToken ct)
-        {
-            var result =
-                await _service.GetCancellationPolicyAsync(
-                    propertyId,
-                    policyId,
-                    ct);
-
-            return Result(result);
-        }
-
-        [HttpPost("{propertyId:int}/cancellation-policies")]
-        [Authorize(Policy = Permissions.Properties.Update)]
-        public async Task<IActionResult> CreateCancellationPolicy(
-            int propertyId,
-            CreateCancellationPolicyRequest request,
-            CancellationToken ct)
-        {
-            var result =
-                await _service.CreateCancellationPolicyAsync(
-                    propertyId,
-                    request,
-                    ct);
-
-            return Result(result);
-        }
-
-        [HttpPatch("{propertyId:int}/cancellation-policies/{policyId:int}")]
-        [Authorize(Policy = Permissions.Properties.Update)]
-        public async Task<IActionResult> UpdateCancellationPolicy(
-            int propertyId,
-            int policyId,
-            UpdateCancellationPolicyRequest request,
-            CancellationToken ct)
-        {
-            var result =
-                await _service.UpdateCancellationPolicyAsync(
-                    propertyId,
-                    policyId,
-                    request,
-                    ct);
-
-            return Result(result);
-        }
-
-        [HttpPost(
-            "{propertyId:int}/cancellation-policies/{policyId:int}/activate")]
-        [Authorize(Policy = Permissions.Properties.Update)]
-        public async Task<IActionResult> ActivateCancellationPolicy(
-            int propertyId,
-            int policyId,
-            CancellationToken ct)
-        {
-            var result =
-                await _service.SetCancellationPolicyStatusAsync(
-                    propertyId,
-                    policyId,
-                    true,
-                    ct);
-
-            return Result(result);
-        }
-
-        [HttpPost(
-            "{propertyId:int}/cancellation-policies/{policyId:int}/deactivate")]
-        [Authorize(Policy = Permissions.Properties.Update)]
-        public async Task<IActionResult> DeactivateCancellationPolicy(
-            int propertyId,
-            int policyId,
-            CancellationToken ct)
-        {
-            var result =
-                await _service.SetCancellationPolicyStatusAsync(
-                    propertyId,
-                    policyId,
-                    false,
-                    ct);
-
-            return Result(result);
-        }
-
-        // =========================
-        // Deposit Policies
+        // Deposit Policies                                     
         // =========================
 
         [HttpGet("{propertyId:int}/deposit-policies")]
@@ -410,8 +238,14 @@ namespace HotelHup.API.Controllers
             int propertyId,
             CancellationToken ct)
         {
+            var user = await GetCurrentuserLogeined();
+
+            if (!user.Success || user.Data == null)
+                return Result(user);
+
             var result =
                 await _service.GetDepositPoliciesAsync(
+                    user.Data,
                     propertyId,
                     ct);
 
@@ -425,8 +259,14 @@ namespace HotelHup.API.Controllers
             int policyId,
             CancellationToken ct)
         {
+            var user = await GetCurrentuserLogeined();
+
+            if (!user.Success || user.Data == null)
+                return Result(user);
+
             var result =
                 await _service.GetDepositPolicyAsync(
+                    user.Data,
                     propertyId,
                     policyId,
                     ct);
@@ -441,8 +281,21 @@ namespace HotelHup.API.Controllers
             CreateDepositPolicyRequest request,
             CancellationToken ct)
         {
+            var validationResult =
+         ValidateModelState();
+
+            if (validationResult is not null)
+                return validationResult;
+
+            var user =
+                await GetCurrentuserLogeined();
+
+            if (!user.Success || user.Data == null)
+                return Result(user);
+
             var result =
                 await _service.CreateDepositPolicyAsync(
+                    user.Data,
                     propertyId,
                     request,
                     ct);
@@ -455,14 +308,25 @@ namespace HotelHup.API.Controllers
         public async Task<IActionResult> UpdateDepositPolicy(
             int propertyId,
             int policyId,
-            UpdateDepositPolicyRequest request,
+            UpdateDepositPolicyRequest request,string ifmatch,
             CancellationToken ct)
         {
+            var validationResult =
+         ValidateModelState();
+
+            if (validationResult is not null)
+                return validationResult;
+
+            var user =
+                await GetCurrentuserLogeined();
+
+            if (!user.Success || user.Data == null)
+                return Result(user);
             var result =
                 await _service.UpdateDepositPolicyAsync(
-                    propertyId,
+               user.Data, propertyId,
                     policyId,
-                    request,
+                    request,ifmatch,
                     ct);
 
             return Result(result);
@@ -476,9 +340,16 @@ namespace HotelHup.API.Controllers
             int policyId,
             CancellationToken ct)
         {
+            
+
+            var user =
+                await GetCurrentuserLogeined();
+
+            if (!user.Success || user.Data == null)
+                return Result(user);
             var result =
                 await _service.SetDepositPolicyStatusAsync(
-                    propertyId,
+                    user.Data,propertyId,
                     policyId,
                     true,
                     ct);
@@ -494,15 +365,22 @@ namespace HotelHup.API.Controllers
             int policyId,
             CancellationToken ct)
         {
+          
+            var user =
+                await GetCurrentuserLogeined();
+
+            if (!user.Success || user.Data == null)
+                return Result(user);
             var result =
                 await _service.SetDepositPolicyStatusAsync(
-                    propertyId,
+                  user.Data,  propertyId,
                     policyId,
                     false,
                     ct);
 
             return Result(result);
         }
-      
+
     }
 }
+

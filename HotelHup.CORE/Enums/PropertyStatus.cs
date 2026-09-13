@@ -11,7 +11,13 @@ namespace HotelHup.CORE.Enums
         Active,
         Inactive
     }
-
+    public enum PropertySortBy
+    {
+        Name,
+        Code,
+        CreatedAt,
+        Status
+    }
     public enum UserStatus
     {
         Active,

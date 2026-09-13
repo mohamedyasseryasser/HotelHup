@@ -1,25 +1,37 @@
 ﻿using HotelHup.APPLICATION.DTO.aduitlog;
 using HotelHup.APPLICATION.DTO.General;
 using HotelHup.APPLICATION.DTO.property;
+using HotelHup.APPLICATION.DTO.property.propertycancellationdtos;
+using HotelHup.APPLICATION.DTO.property.propertydepositdtos;
+using HotelHup.APPLICATION.DTO.property.propertydto;
+using HotelHup.APPLICATION.DTO.property.propertysettingdto;
+using HotelHup.APPLICATION.DTO.property.propertytaxdto;
+using HotelHup.APPLICATION.DTO.user;
 using HotelHup.APPLICATION.interfacesrepo;
 using HotelHup.APPLICATION.services.interfaces;
 using HotelHup.CORE.Entities;
 using HotelHup.CORE.Enums;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using System.Security.Claims;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
+using System.Xml.Linq;
+using Property = HotelHup.CORE.Entities.Property;
 
 namespace HotelHup.APPLICATION.services.implementation
 {
     public sealed class PropertyService : IPropertyService
     {
         private readonly IUserRepository repository;
-        private readonly IPropertyRepository _repo;
-         private readonly UserManager<User> _users;
+        public readonly IPropertyRepository _repo;
+         private readonly UserManager<User> _users;  
 
-        public PropertyService(IUserRepository _repository,
+        public PropertyService(IUserRepository _repository,      
             IPropertyRepository repo,
              UserManager<User> users)
         {
@@ -32,13 +44,21 @@ namespace HotelHup.APPLICATION.services.implementation
            User CurrentUserLogin, PropertyListRequest r,
             CancellationToken ct = default)
         {
+            //check actor is admin or PropertyManager
             var auth = await AuthorizeAsync(CurrentUserLogin.Id, null, ct);
 
             if (!auth.Success)
             {
                 return Fail<PropertyListResponse>(auth);
             }
-
+            if (r==null)
+            {
+                
+                return Fail<PropertyListResponse>(
+                    message: "request is null",
+                    statusCode: 400
+                    );
+            }
             r ??= new();
 
             var page = Math.Max(1, r.Page);
@@ -69,25 +89,30 @@ namespace HotelHup.APPLICATION.services.implementation
         }
 
         public async Task<ResponseStatus<PropertyResponse>> GetAsync(
-          User CurrentUserLogin,  int id,
+            User currentUserLogin,
+            int id,
             CancellationToken ct = default)
         {
-            var auth = await AuthorizeAsync(CurrentUserLogin.Id, id, ct);
+            var auth = await AuthorizeAsync(
+                currentUserLogin.Id,
+                id,
+                ct);
 
             if (!auth.Success)
             {
-                return Fail<PropertyResponse>(auth);
-            }
-
-            var property = await _repo.GetByIdAsync(id, ct);
-
-            if (property is null)
-            {
                 return Fail<PropertyResponse>(
-                    "Property not found.",
-                    404);
+                    auth.Message,
+                    auth.StatusCode);
             }
-
+            var property = await _repo.GetByIdAsync(id,ct);
+            if (property==null)
+            {
+                return 
+                    new 
+                    ResponseStatus<PropertyResponse>
+                    (message:"this property is not found",
+                    statusCode:400);
+            }
             return Ok(ToResponse(property));
         }
 
@@ -95,12 +120,26 @@ namespace HotelHup.APPLICATION.services.implementation
            User CurrentUserLogin, CreatePropertyRequest r,
             CancellationToken ct = default)
         {
-            //check currentuserlogin is admin or manager
-            var auth = await AuthorizeAsync(CurrentUserLogin.Id,null, ct);
-
-            if (!auth.Success)
+            //check currentuserlogin is admin 
+            var result = await IsAdminAsync(CurrentUserLogin.Id, ct);
+            if (!result.Success)
             {
-                return Fail<PropertyResponse>(auth);
+                return new ResponseStatus<PropertyResponse>(
+                    message: result.Message,
+                    statusCode: result.StatusCode,errors:result.Errors);
+            }
+
+            if (result.Data is null || !result.Data.IsAdmin)
+            {
+                return new ResponseStatus<PropertyResponse>(
+                    message: "Admin access required.",
+                    statusCode: 403,errors:result.Errors);
+            }
+            if (r is null)
+            {
+                return Fail<PropertyResponse>(
+                    "Request body is required.",
+                    400);
             }
             //validation property
             var errors = ValidateProperty(r);
@@ -172,7 +211,7 @@ namespace HotelHup.APPLICATION.services.implementation
         }
 
         public async Task<ResponseStatus<PropertyResponse>> UpdateAsync(
-           User CurrentUserLogin ,int id,
+           User CurrentUserLogin ,string ifmatch,int id,
             UpdatePropertyRequest r,
             CancellationToken ct = default)
         {
@@ -181,7 +220,27 @@ namespace HotelHup.APPLICATION.services.implementation
              if (!auth.Success)
              {
                 return Fail<PropertyResponse>(auth);
-             }
+            }
+            if (r is null)
+            {
+                return Fail<PropertyResponse>(
+                    "Request body is required.",
+                    400);
+            }
+
+            if (string.IsNullOrWhiteSpace(ifmatch))
+            {
+                return Fail<PropertyResponse>(
+                    "If-Match header is required.",
+                    428);
+            }
+
+            if (string.IsNullOrWhiteSpace(r.Reason))
+            {
+                return Fail<PropertyResponse>(
+                    "reason is required.",
+                    400);
+            }
             var property = await _repo.GetTrackedByIdAsync(id, ct);
 
             if (property is null)
@@ -196,9 +255,9 @@ namespace HotelHup.APPLICATION.services.implementation
                     "Property not active.",
                     404);
             }
-            if (!CheckVersion(
-                    r.ExpectedRowVersion,
-                    property.Settings.RowVersion))
+            if (!CheckRowVersion(
+                    ifmatch,
+                    property.RowVersion))
             {
                 return Fail<PropertyResponse>(
                     "Concurrency conflict.",
@@ -263,23 +322,24 @@ namespace HotelHup.APPLICATION.services.implementation
         }
 
         public async Task<ResponseStatus<PropertyResponse>> ActivateAsync(
-            int id,
+          string expected, User actor, int id,
             CancellationToken ct = default)
         {
+
             return await SetPropertyStatus(
-                id,
+            expected,  actor,  id,
                 PropertyStatus.Active,
                 null,
                 ct);
         }
 
         public async Task<ResponseStatus<PropertyResponse>> DeactivateAsync(
-            int id,
+          string excepted, User actor ,int id,
             DeactivatePropertyRequest r,
             CancellationToken ct = default)
         {
             return await SetPropertyStatus(
-                id,
+          excepted,     actor, id,
                 PropertyStatus.Inactive,
                 r?.Reason,
                 ct);
@@ -287,43 +347,52 @@ namespace HotelHup.APPLICATION.services.implementation
 
         public async Task<ResponseStatus<PropertySettingsResponse>>
             GetSettingsAsync(
-                int id,
+                User CurrentUserLogin,int id,
                 CancellationToken ct = default)
         {
-            var auth = await AuthorizeAsync(id, false, ct);
+            var auth = await AuthorizePropertyAccessAsync(
+                            CurrentUserLogin.Id,
+                            id,
+                            ct);
 
             if (!auth.Success)
             {
-                return Fail<PropertySettingsResponse>(auth);
+                return Fail<PropertySettingsResponse>(
+                    auth.Message,
+                    auth.StatusCode);
             }
-
-            var settings = await _repo.GetSettingsAsync(id, ct);
-
-            if (settings is null)
+            if (auth.Data is null||auth.Data.Settings is null)
             {
                 return Fail<PropertySettingsResponse>(
                     "Settings not found.",
                     404);
             }
-
+            var settings = auth.Data.Settings;
             return Ok(ToResponse(settings));
         }
 
         public async Task<ResponseStatus<PropertySettingsResponse>>
             UpdateSettingsAsync(
-                int id,
+               User actor, int id,string ifmatch,
                 UpdatePropertySettingsRequest r,
                 CancellationToken ct = default)
         {
-            var auth = await AuthorizeAsync(id, true, ct);
-
-            if (!auth.Success)
+            if (r is null)
             {
-                return Fail<PropertySettingsResponse>(auth);
+                return Fail<PropertySettingsResponse>(
+                    "Request body is required.",
+                    400);
             }
 
+            if (string.IsNullOrWhiteSpace(ifmatch))
+            {
+                return Fail<PropertySettingsResponse>(
+                    "If-Match header is required.",
+                    428);
+            }
+            //check property
             var property =
-                await _repo.GetTrackedByIdAsync(id, ct);
+               await _repo.GetTrackedByIdAsync(id, ct);
 
             if (property is null)
             {
@@ -331,7 +400,21 @@ namespace HotelHup.APPLICATION.services.implementation
                     "Property not found.",
                     404);
             }
+            if (property.Status == PropertyStatus.Inactive)
+            {
+                return Fail<PropertySettingsResponse>(
+                   "Property not active.",
+                   404);
+            }
+            //check admin or manager
+            var auth = await AuthorizeAsync(actor.Id,property.ID,ct);
 
+            if (!auth.Success)
+            {
+                return Fail<PropertySettingsResponse>(
+                    auth.Message,
+                    auth.StatusCode);
+            }
             var settings =
                 await _repo.GetTrackedSettingsAsync(id, ct);
 
@@ -342,15 +425,46 @@ namespace HotelHup.APPLICATION.services.implementation
                     404);
             }
 
-            if (!CheckVersion(
-                    r.ExpectedRowVersion,
+            if (!CheckRowVersion(
+                    ifmatch,
                     settings.RowVersion))
             {
                 return Fail<PropertySettingsResponse>(
                     "Concurrency conflict.",
                     409);
             }
+            var oldValues = new
+            {
+                CheckInTime =
+            settings.CheckInTime,
 
+                CheckOutTime =
+            settings.CheckOutTime,
+
+                NightAuditCutoffTime =
+            settings.HotelDayClosingTime,
+
+                AllowEarlyCheckIn =
+            settings.AllowEarlyCheckIn,
+
+                Currency =
+            settings.DefaultCurrency,
+
+                TimeZone =
+            settings.TimeZone,
+
+                RequireDepositForReservation =
+            settings.RequireDepositForReservation,
+
+                RequireFullPaymentBeforeCheckOut =
+            settings.RequireFullPaymentBeforeCheckOut,
+
+                AllowOverpayment =
+            settings.AllowOverpayment,
+
+                RequireInspectionBeforeAvailable =
+            settings.RequireInspectionBeforeAvailable
+            };
             if (r.CheckInTime.HasValue)
             {
                 settings.CheckInTime =
@@ -396,7 +510,7 @@ namespace HotelHup.APPLICATION.services.implementation
                 }
 
                 settings.DefaultCurrency = currency;
-                property.Currency = currency;
+              //  property.Currency = currency;
             }
 
             if (r.TimeZone is not null)
@@ -409,8 +523,7 @@ namespace HotelHup.APPLICATION.services.implementation
                 }
 
                 settings.TimeZone = r.TimeZone.Trim();
-                property.TimeZone = settings.TimeZone;
-            }
+             }
 
             if (r.RequireDepositForReservation.HasValue)
             {
@@ -440,632 +553,265 @@ namespace HotelHup.APPLICATION.services.implementation
                 DateTimeOffset.UtcNow;
 
             settings.UpdatedBy =
-                ActorId();
+                actor.Id;
+            var newValues = new
+            {
+                CheckInTime =
+           settings.CheckInTime,
+
+                CheckOutTime =
+           settings.CheckOutTime,
+
+                NightAuditCutoffTime =
+           settings.HotelDayClosingTime,
+
+                AllowEarlyCheckIn =
+           settings.AllowEarlyCheckIn,
+
+                Currency =
+           settings.DefaultCurrency,
+
+                TimeZone =
+           settings.TimeZone,
+
+                RequireDepositForReservation =
+           settings.RequireDepositForReservation,
+
+                RequireFullPaymentBeforeCheckOut =
+           settings.RequireFullPaymentBeforeCheckOut,
+
+                AllowOverpayment =
+           settings.AllowOverpayment,
+
+                RequireInspectionBeforeAvailable =
+           settings.RequireInspectionBeforeAvailable
+            };
 
             await _repo.AddAuditLogAsync(
                 Audit(
                     "PropertySettings",
                     "Update",
                     id.ToString(),
-                    null,
-                    settings,
-                    r.Reason),
+                    oldValues,
+                    newValues,
+                    r.Reason,propertyId:property.ID,actorid:actor.Id),
                 ct);
 
-            if (!await Save(ct))
+            try
+            {
+                await _repo.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateConcurrencyException)
             {
                 return Fail<PropertySettingsResponse>(
-                    "Concurrency conflict.",
+                    "concurrency conflict.",
                     409);
             }
 
             return Ok(ToResponse(settings));
         }
 
-        // ============================================================
-        // Taxes
-        // ============================================================
+       
 
-        public async Task<ResponseStatus<IReadOnlyList<TaxResponse>>>
-            GetTaxesAsync(
-                int propertyId,
-                CancellationToken ct = default)
-        {
-            var auth =
-                await AuthorizeAsync(propertyId, false, ct);
+      
 
-            if (!auth.Success)
-            {
-                return Fail<IReadOnlyList<TaxResponse>>(auth);
-            }
-
-            var taxes =
-                await _repo.GetTaxesAsync(propertyId, ct);
-
-            return Ok<IReadOnlyList<TaxResponse>>(
-                taxes
-                    .Select(ToResponse)
-                    .ToArray());
-        }
-
-        public async Task<ResponseStatus<TaxResponse>> GetTaxAsync(
-            int propertyId,
-            int taxId,
-            CancellationToken ct = default)
-        {
-            var auth =
-                await AuthorizeAsync(propertyId, false, ct);
-
-            if (!auth.Success)
-            {
-                return Fail<TaxResponse>(auth);
-            }
-
-            var tax =
-                await _repo.GetTaxAsync(
-                    propertyId,
-                    taxId,
-                    ct);
-
-            if (tax is null)
-            {
-                return Fail<TaxResponse>(
-                    "Tax not found.",
-                    404);
-            }
-
-            return Ok(ToResponse(tax));
-        }
-
-        public async Task<ResponseStatus<TaxResponse>> CreateTaxAsync(
-            int propertyId,
-            CreateTaxRequest r,
-            CancellationToken ct = default)
-        {
-            var auth =
-                await AuthorizeAsync(
-                    propertyId,
-                    true,
-                    ct);
-
-            if (!auth.Success)
-            {
-                return Fail<TaxResponse>(auth);
-            }
-
-            var errors =
-                ValidateDates(
-                    r.ValidFrom,
-                    r.ValidTo);
-
-            if (
-                errors.Count > 0
-                || r.Rate < 0
-                || (
-                    r.Type == TaxType.Percentage
-                    && r.Rate > 100))
-            {
-                return Fail<TaxResponse>(
-                    "Invalid tax.",
-                    400,
-                    errors);
-            }
-
-            var code = Normalize(r.Code);
-
-            var taxes =
-                await _repo.GetTaxesAsync(
-                    propertyId,
-                    ct);
-
-            if (taxes.Any(x => x.Code == code))
-            {
-                return Fail<TaxResponse>(
-                    "Tax code already exists in this property.",
-                    409);
-            }
-
-            var tax = new Tax
-            {
-                PropertyId = propertyId,
-                Name = Clean(r.Name),
-                Code = code,
-                Rate = r.Rate,
-                Type = r.Type,
-                IsInclusive = r.IsInclusive,
-                ValidFrom = r.ValidFrom.ToUniversalTime(),
-                ValidTo = r.ValidTo?.ToUniversalTime(),
-                CreatedAt = DateTimeOffset.UtcNow,
-                CreatedBy = ActorId()
-            };
-
-            await _repo.AddAsync(tax, ct);
-
-            await _repo.AddAuditLogAsync(
-                Audit(
-                    "Tax",
-                    "Create",
-                    tax.Id.ToString(),
-                    null,
-                    tax,
-                    null,
-                    propertyId),
-                ct);
-
-            await _repo.SaveChangesAsync(ct);
-
-            return Created(ToResponse(tax));
-        }
-
-        public async Task<ResponseStatus<TaxResponse>> UpdateTaxAsync(
-            int propertyId,
-            int taxId,
-            UpdateTaxRequest r,
-            CancellationToken ct = default)
-        {
-            var auth =
-                await AuthorizeAsync(
-                    propertyId,
-                    true,
-                    ct);
-
-            if (!auth.Success)
-            {
-                return Fail<TaxResponse>(auth);
-            }
-
-            var tax =
-                await _repo.GetTrackedTaxAsync(
-                    propertyId,
-                    taxId,
-                    ct);
-
-            if (tax is null)
-            {
-                return Fail<TaxResponse>(
-                    "Tax not found.",
-                    404);
-            }
-
-            if (
-                (r.Rate.HasValue && r.Rate < 0)
-                ||
-                (
-                    r.Type == TaxType.Percentage
-                    && r.Rate > 100))
-            {
-                return Fail<TaxResponse>(
-                    "Invalid tax rate.",
-                    400);
-            }
-
-            if (r.Name is not null)
-            {
-                tax.Name = Clean(r.Name);
-            }
-
-            if (r.Code is not null)
-            {
-                var code = Normalize(r.Code);
-
-                var taxes =
-                    await _repo.GetTaxesAsync(
-                        propertyId,
-                        ct);
-
-                if (taxes.Any(
-                        t => t.Id != taxId
-                             && t.Code == code))
-                {
-                    return Fail<TaxResponse>(
-                        "Tax code already exists in this property.",
-                        409);
-                }
-
-                tax.Code = code;
-            }
-
-            if (r.Rate.HasValue)
-            {
-                tax.Rate = r.Rate.Value;
-            }
-
-            if (r.Type.HasValue)
-            {
-                tax.Type = r.Type.Value;
-            }
-
-            if (r.IsInclusive.HasValue)
-            {
-                tax.IsInclusive =
-                    r.IsInclusive.Value;
-            }
-
-            if (r.ValidFrom.HasValue)
-            {
-                tax.ValidFrom =
-                    r.ValidFrom.Value.ToUniversalTime();
-            }
-
-            if (r.ValidTo.HasValue)
-            {
-                tax.ValidTo =
-                    r.ValidTo.Value.ToUniversalTime();
-            }
-
-            var dateErrors =
-                ValidateDates(
-                    tax.ValidFrom,
-                    tax.ValidTo);
-
-            if (dateErrors.Count > 0)
-            {
-                return Fail<TaxResponse>(
-                    "Invalid tax dates.",
-                    400,
-                    dateErrors);
-            }
-
-            tax.UpdatedAt =
-                DateTimeOffset.UtcNow;
-
-            tax.UpdatedBy =
-                ActorId();
-
-            await _repo.AddAuditLogAsync(
-                Audit(
-                    "Tax",
-                    "Update",
-                    taxId.ToString(),
-                    null,
-                    tax,
-                    r.Reason,
-                    propertyId),
-                ct);
-
-            if (!await Save(ct))
-            {
-                return Fail<TaxResponse>(
-                    "Concurrency conflict.",
-                    409);
-            }
-
-            return Ok(ToResponse(tax));
-        }
-
-        public async Task<ResponseStatus<TaxResponse>>
-            SetTaxStatusAsync(
-                int propertyId,
-                int taxId,
-                bool active,
-                CancellationToken ct = default)
-        {
-            return await SetTax(
-                propertyId,
-                taxId,
-                active,
-                ct);
-        }
 
         // ============================================================
-        // Cancellation Policies
+        // Deposit Policies (immutable version rows)
         // ============================================================
 
-        public async Task<
-            ResponseStatus<IReadOnlyList<CancellationPolicyResponse>>>
-            GetCancellationPoliciesAsync(
-                int propertyId,
-                CancellationToken ct = default)
-        {
-            var auth =
-                await AuthorizeAsync(
-                    propertyId,
-                    false,
-                    ct);
-
-            if (!auth.Success)
-            {
-                return Fail<
-                    IReadOnlyList<CancellationPolicyResponse>>(auth);
-            }
-
-            var policies =
-                await _repo.GetCancellationPoliciesAsync(
-                    propertyId,
-                    ct);
-
-            return Ok<
-                IReadOnlyList<CancellationPolicyResponse>>(
-                policies
-                    .Select(ToResponse)
-                    .ToArray());
-        }
-
-        public async Task<
-            ResponseStatus<CancellationPolicyResponse>>
-            GetCancellationPolicyAsync(
-                int propertyId,
-                int policyId,
-                CancellationToken ct = default)
-        {
-            var auth =
-                await AuthorizeAsync(
-                    propertyId,
-                    false,
-                    ct);
-
-            if (!auth.Success)
-            {
-                return Fail<CancellationPolicyResponse>(auth);
-            }
-
-            var policy =
-                await _repo.GetCancellationPolicyAsync(
-                    propertyId,
-                    policyId,
-                    ct);
-
-            if (policy is null)
-            {
-                return Fail<CancellationPolicyResponse>(
-                    "Cancellation policy not found.",
-                    404);
-            }
-
-            return Ok(ToResponse(policy));
-        }
-
-        public async Task<
-            ResponseStatus<CancellationPolicyResponse>>
-            CreateCancellationPolicyAsync(
-                int propertyId,
-                CreateCancellationPolicyRequest r,
-                CancellationToken ct = default)
-        {
-            var auth =
-                await AuthorizeAsync(
-                    propertyId,
-                    true,
-                    ct);
-
-            if (!auth.Success)
-            {
-                return Fail<CancellationPolicyResponse>(auth);
-            }
-
-            var errors =
-                ValidatePolicy(
-                    r.ValidFrom,
-                    r.ValidTo,
-                    r.CancellationFeePercentage,
-                    r.FreeCancellationHours,
-                    r.CutoffHours,
-                    r.Rules);
-
-            if (errors.Count > 0)
-            {
-                return Fail<CancellationPolicyResponse>(
-                    "Invalid cancellation policy.",
-                    400,
-                    errors);
-            }
-
-            var policy = new CancellationPolicy
-            {
-                PropertyId = propertyId,
-                Name = Clean(r.Name),
-                Description = CleanOptional(r.Description),
-                ValidFrom = r.ValidFrom.ToUniversalTime(),
-                ValidTo = r.ValidTo?.ToUniversalTime(),
-                Rules = r.Rules,
-                Version =
-                    await _repo.GetNextCancellationVersionAsync(
-                        propertyId,
-                        ct),
-                FreeCancellationHours =
-                    r.FreeCancellationHours,
-                CancellationFeePercentage =
-                    r.CancellationFeePercentage,
-                FixedCancellationFee =
-                    r.FixedCancellationFee,
-                IsNonRefundable =
-                    r.IsNonRefundable,
-                CutoffHours =
-                    r.CutoffHours,
-                CreatedAt =
-                    DateTimeOffset.UtcNow,
-                CreatedBy =
-                    ActorId()
-            };
-
-            await _repo.AddAsync(policy, ct);
-
-            await _repo.AddAuditLogAsync(
-                Audit(
-                    "CancellationPolicy",
-                    "Create",
-                    policy.Id.ToString(),
-                    null,
-                    policy,
-                    null,
-                    propertyId),
-                ct);
-
-            await _repo.SaveChangesAsync(ct);
-
-            return Created(ToResponse(policy));
-        }
-
-        public async Task<
-            ResponseStatus<CancellationPolicyResponse>>
-            UpdateCancellationPolicyAsync(
-                int propertyId,
-                int policyId,
-                UpdateCancellationPolicyRequest r,
-                CancellationToken ct = default)
-        {
-            var auth =
-                await AuthorizeAsync(
-                    propertyId,
-                    true,
-                    ct);
-
-            if (!auth.Success)
-            {
-                return Fail<CancellationPolicyResponse>(auth);
-            }
-
-            var old =
-                await _repo.GetCancellationPolicyAsync(
-                    propertyId,
-                    policyId,
-                    ct);
-
-            if (old is null)
-            {
-                return Fail<CancellationPolicyResponse>(
-                    "Cancellation policy not found.",
-                    404);
-            }
-
-            var errors =
-                ValidatePolicy(
-                    r.ValidFrom,
-                    r.ValidTo,
-                    r.CancellationFeePercentage,
-                    r.FreeCancellationHours,
-                    r.CutoffHours,
-                    r.Rules);
-
-            if (errors.Count > 0)
-            {
-                return Fail<CancellationPolicyResponse>(
-                    "Invalid cancellation policy.",
-                    400,
-                    errors);
-            }
-
-            var policy = new CancellationPolicy
-            {
-                PropertyId = propertyId,
-                Name = Clean(r.Name),
-                Description = CleanOptional(r.Description),
-                ValidFrom = r.ValidFrom.ToUniversalTime(),
-                ValidTo = r.ValidTo?.ToUniversalTime(),
-                Rules = r.Rules,
-                Version =
-                    await _repo.GetNextCancellationVersionAsync(
-                        propertyId,
-                        ct),
-                FreeCancellationHours =
-                    r.FreeCancellationHours,
-                CancellationFeePercentage =
-                    r.CancellationFeePercentage,
-                FixedCancellationFee =
-                    r.FixedCancellationFee,
-                IsNonRefundable =
-                    r.IsNonRefundable,
-                CutoffHours =
-                    r.CutoffHours,
-                CreatedAt =
-                    DateTimeOffset.UtcNow,
-                CreatedBy =
-                    ActorId()
-            };
-
-            old.ValidTo =
-                DateTimeOffset.UtcNow;
-
-            old.Status =
-                PolicyStatus.Inactive;
-
-            await _repo.AddAsync(policy, ct);
-
-            await _repo.AddAuditLogAsync(
-                Audit(
-                    "CancellationPolicy",
-                    "Update",
-                    policy.Id.ToString(),
-                    old,
-                    policy,
-                    r.Reason,
-                    propertyId),
-                ct);
-
-            await _repo.SaveChangesAsync(ct);
-
-            return Created(ToResponse(policy));
-        }
-
-        public async Task<
-            ResponseStatus<CancellationPolicyResponse>>
-            SetCancellationPolicyStatusAsync(
-                int propertyId,
-                int policyId,
-                bool active,
-                CancellationToken ct = default)
-        {
-            return await SetCancellation(
-                propertyId,
-                policyId,
-                active,
-                ct);
-        }
-
-        // ============================================================
-        // Deposit Policies
-        // ============================================================
-
-        public async Task<
-            ResponseStatus<IReadOnlyList<DepositPolicyResponse>>>
+        public async Task<ResponseStatus<IReadOnlyList<DepositPolicyResponse>>>
             GetDepositPoliciesAsync(
-                int propertyId,
-                CancellationToken ct = default)
+          User actor,  int propertyId,
+            CancellationToken ct = default)
         {
             var auth =
-                await AuthorizeAsync(
-                    propertyId,
-                    false,
-                    ct);
+        await AuthorizeAsync(
+            actor.Id,
+            propertyId,
+            ct);
 
             if (!auth.Success)
-            {
-                return Fail<
-                    IReadOnlyList<DepositPolicyResponse>>(auth);
-            }
+                return Fail<IReadOnlyList<DepositPolicyResponse>>(auth);
 
             var policies =
                 await _repo.GetDepositPoliciesAsync(
                     propertyId,
                     ct);
 
-            return Ok<
-                IReadOnlyList<DepositPolicyResponse>>(
+            return Ok<IReadOnlyList<DepositPolicyResponse>>(
                 policies
                     .Select(ToResponse)
                     .ToArray());
         }
 
         public async Task<
-            ResponseStatus<DepositPolicyResponse>>
-            GetDepositPolicyAsync(
-                int propertyId,
-                int policyId,
-                CancellationToken ct = default)
+          ResponseStatus<DepositPolicyResponse>>
+          GetDepositPolicyAsync(
+              User actor,
+              int propertyId,
+              int policyId,
+              CancellationToken ct = default)
         {
             var auth =
                 await AuthorizeAsync(
+                    actor.Id,
                     propertyId,
-                    false,
                     ct);
 
             if (!auth.Success)
-            {
                 return Fail<DepositPolicyResponse>(auth);
-            }
 
             var policy =
                 await _repo.GetDepositPolicyAsync(
+                    propertyId,
+                    policyId,
+                    ct);
+
+            if (policy is null)
+                return Fail<DepositPolicyResponse>(
+                    "Deposit policy not found.",
+                    404);
+
+            return Ok(ToResponse(policy));
+        }
+
+
+        public async Task<
+     ResponseStatus<DepositPolicyResponse>>
+     CreateDepositPolicyAsync(
+         User actor,
+         int propertyId,
+         CreateDepositPolicyRequest request,
+         CancellationToken ct = default)
+        {
+            var auth =
+                await AuthorizeAsync(
+                    actor.Id,
+                    propertyId,
+                    ct);
+
+            if (!auth.Success)
+                return Fail<DepositPolicyResponse>(auth);
+
+            var errors =
+                ValidateDeposit(request, null);
+
+            if (errors.Count > 0)
+            {
+                return Fail<DepositPolicyResponse>(
+                    "Invalid deposit policy.",
+                    400,
+                    errors);
+            }
+
+            var now =
+                DateTimeOffset.UtcNow;
+
+            var policy = new DepositPolicy
+            {
+                PropertyId = propertyId,
+                Name = Clean(request.Name),
+                Type = request.Type,
+                Amount = request.Amount,
+                Percentage = request.Percentage,
+                ValidFrom =
+                    request.ValidFrom.ToUniversalTime(),
+                ValidTo =
+                    request.ValidTo?.ToUniversalTime(),
+                IsActive = true,
+                CurrentVersion = 1,
+                CreatedAt = now,
+                CreatedBy = actor.Id
+            };
+
+            var version =
+                NewDepositVersion(
+                    policy,
+                    request,
+                    1,
+                    now,
+                    actor.Id);
+
+            policy.Versions.Add(version);
+
+            try
+            {
+                await _repo.AddDepositPolicyWithAuditAsync(
+                    policy,
+                    Audit(
+                        "DepositPolicy",
+                        "Create",
+                        "pending",
+                        null,
+                        version,
+                        null,
+                        propertyId,
+                        actor.Id),
+                    ct);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                return Fail<DepositPolicyResponse>(
+                    "Concurrency conflict.",
+                    409);
+            }
+            catch (DbUpdateException)
+            {
+                return Fail<DepositPolicyResponse>(
+                    "Deposit policy could not be created.",
+                    409);
+            }
+
+            return Created(ToResponse(policy));
+        }
+
+
+        public async Task<ResponseStatus<DepositPolicyResponse>>
+          UpdateDepositPolicyAsync(
+              User actor,
+              int propertyId,
+              int policyId,
+              UpdateDepositPolicyRequest request,
+              string ifMatch,
+              CancellationToken ct = default)
+        {
+            if (actor is null)
+            {
+                return Fail<DepositPolicyResponse>(
+                    "Authenticated user is required.",
+                    401);
+            }
+
+            if (request is null)
+            {
+                return Fail<DepositPolicyResponse>(
+                    "Request body is required.",
+                    400);
+            }
+
+            if (string.IsNullOrWhiteSpace(ifMatch))
+            {
+                return Fail<DepositPolicyResponse>(
+                    "If-Match header is required.",
+                    428);
+            }
+
+            var authorization =
+                await AuthorizeAsync(
+                    actor.Id,
+                    propertyId,
+                    ct);
+
+            if (!authorization.Success)
+            {
+                return Fail<DepositPolicyResponse>(
+                    authorization.Message,
+                    authorization.StatusCode);
+            }
+
+            var policy =
+                await _repo.GetTrackedDepositPolicyAsync(
                     propertyId,
                     policyId,
                     ct);
@@ -1077,222 +823,228 @@ namespace HotelHup.APPLICATION.services.implementation
                     404);
             }
 
-            return Ok(ToResponse(policy));
-        }
-
-        public async Task<
-            ResponseStatus<DepositPolicyResponse>>
-            CreateDepositPolicyAsync(
-                int propertyId,
-                CreateDepositPolicyRequest r,
-                CancellationToken ct = default)
-        {
-            var auth =
-                await AuthorizeAsync(
-                    propertyId,
-                    true,
-                    ct);
-
-            if (!auth.Success)
+            if (!CheckRowVersion(
+                    ifMatch,
+                    policy.RowVersion))
             {
-                return Fail<DepositPolicyResponse>(auth);
+                return Fail<DepositPolicyResponse>(
+                    "Concurrency conflict. The deposit policy was modified by another user.",
+                    409);
             }
 
-            var errors =
-                ValidateDates(
-                    r.ValidFrom,
-                    r.ValidTo);
+            var previousVersion =
+                policy.Versions
+                    .OrderByDescending(x => x.Version)
+                    .FirstOrDefault();
 
-            if (
-                r.Amount < 0
-                || r.Percentage < 0
-                || (
-                    r.Type == DepositType.Percentage
-                    && r.Percentage > 100)
-                || errors.Count > 0
-                || (
-                    r.Type == DepositType.Percentage
-                    && r.Amount != 0)
-                || (
-                    r.Type == DepositType.FixedAmount
-                    && r.Percentage != 0))
+            if (previousVersion is null)
+            {
+                return Fail<DepositPolicyResponse>(
+                    "The deposit policy has no previous version.",
+                    409);
+            }
+
+            var validationErrors =
+                ValidateDepositUpdate(
+                    request,
+                    previousVersion);
+
+            if (validationErrors.Count > 0)
             {
                 return Fail<DepositPolicyResponse>(
                     "Invalid deposit policy.",
                     400,
-                    errors);
+                    validationErrors);
             }
 
-            var policy = new DepositPolicy
-            {
-                PropertyId = propertyId,
-                Name = Clean(r.Name),
-                Type = r.Type,
-                Amount = r.Amount,
-                Percentage = r.Percentage,
-                ValidFrom =
-                    r.ValidFrom.ToUniversalTime(),
-                ValidTo =
-                    r.ValidTo?.ToUniversalTime(),
-                Version =
-                    await _repo.GetNextDepositVersionAsync(
-                        propertyId,
-                        ct),
-                CreatedAt =
-                    DateTimeOffset.UtcNow,
-                CreatedBy =
-                    ActorId()
-            };
-
-            await _repo.AddAsync(policy, ct);
-
-            await _repo.AddAuditLogAsync(
-                Audit(
-                    "DepositPolicy",
-                    "Create",
-                    policy.Id.ToString(),
-                    null,
-                    policy,
-                    null,
-                    propertyId),
-                ct);
-
-            await _repo.SaveChangesAsync(ct);
-
-            return Created(ToResponse(policy));
-        }
-
-        public async Task<
-            ResponseStatus<DepositPolicyResponse>>
-            UpdateDepositPolicyAsync(
-                int propertyId,
-                int policyId,
-                UpdateDepositPolicyRequest r,
-                CancellationToken ct = default)
-        {
-            var auth =
-                await AuthorizeAsync(
-                    propertyId,
-                    true,
-                    ct);
-
-            if (!auth.Success)
-            {
-                return Fail<DepositPolicyResponse>(auth);
-            }
-
-            var old =
-                await _repo.GetDepositPolicyAsync(
-                    propertyId,
-                    policyId,
-                    ct);
-
-            if (old is null)
-            {
-                return Fail<DepositPolicyResponse>(
-                    "Deposit policy not found.",
-                    404);
-            }
-
-            var errors =
-                ValidateDates(
-                    r.ValidFrom,
-                    r.ValidTo);
-
-            if (
-                r.Amount < 0
-                || r.Percentage < 0
-                || (
-                    r.Type == DepositType.Percentage
-                    && (
-                        r.Percentage > 100
-                        || r.Amount != 0))
-                || (
-                    r.Type == DepositType.FixedAmount
-                    && r.Percentage != 0)
-                || errors.Count > 0)
-            {
-                return Fail<DepositPolicyResponse>(
-                    "Invalid deposit policy.",
-                    400,
-                    errors);
-            }
-
-            var policy = new DepositPolicy
-            {
-                PropertyId = propertyId,
-                Name = Clean(r.Name),
-                Type = r.Type,
-                Amount = r.Amount,
-                Percentage = r.Percentage,
-                ValidFrom =
-                    r.ValidFrom.ToUniversalTime(),
-                ValidTo =
-                    r.ValidTo?.ToUniversalTime(),
-                Version =
-                    await _repo.GetNextDepositVersionAsync(
-                        propertyId,
-                        ct),
-                CreatedAt =
-                    DateTimeOffset.UtcNow,
-                CreatedBy =
-                    ActorId()
-            };
-
-            old.ValidTo =
+            var now =
                 DateTimeOffset.UtcNow;
 
-            old.IsActive = false;
+            var newValidFrom =
+                request.ValidFrom.ToUniversalTime();
 
-            await _repo.AddAsync(policy, ct);
+            var newValidTo =
+                request.ValidTo?.ToUniversalTime();
+
+            /*
+             * نأخذ snapshot قبل تعديل الإصدار القديم.
+             */
+            var oldVersionSnapshot = new
+            {
+                previousVersion.Id,
+                previousVersion.DepositId,
+                previousVersion.Version,
+                previousVersion.Name,
+                previousVersion.Type,
+                previousVersion.Amount,
+                previousVersion.Percentage,
+                previousVersion.ValidFrom,
+                previousVersion.ValidTo,
+                previousVersion.IsActive
+            };
+
+            /*
+             * إغلاق الإصدار السابق عند بداية الإصدار الجديد.
+             */
+            if (!previousVersion.ValidTo.HasValue ||
+                previousVersion.ValidTo.Value > newValidFrom)
+            {
+                previousVersion.ValidTo =
+                    newValidFrom;
+            }
+
+            previousVersion.IsActive =
+                false;
+
+            var nextVersionNumber =
+                policy.CurrentVersion + 1;
+
+            var newVersion =
+                new DepositPolicyVersion
+                {
+                    Deposit =
+                        policy,
+
+                    Version =
+                        nextVersionNumber,
+
+                    Name =
+                        Clean(request.Name),
+
+                    Type =
+                        request.Type,
+
+                    Amount =
+                        decimal.Round(
+                            request.Amount,
+                            2,
+                            MidpointRounding.AwayFromZero),
+
+                    Percentage =
+                        decimal.Round(
+                            request.Percentage,
+                            2,
+                            MidpointRounding.AwayFromZero),
+
+                    ValidFrom =
+                        newValidFrom,
+
+                    ValidTo =
+                        newValidTo,
+
+                    IsActive =
+                        true,
+
+                    CreatedAt =
+                        now,
+
+                    CreatedBy =
+                        actor.Id
+                };
+
+            /*
+             * نحافظ على الـ root Name كما هو.
+             * الإصدار الجديد يحتوي على الـ Name الجديد.
+             *
+             * يتم تحديث بيانات الـ current version فقط.
+             */
+            policy.Type =
+                request.Type;
+
+            policy.Amount =
+                request.Amount;
+
+            policy.Percentage =
+                request.Percentage;
+
+            policy.ValidFrom =
+                newValidFrom;
+
+            policy.ValidTo =
+                newValidTo;
+
+            policy.CurrentVersion =
+                nextVersionNumber;
+
+            policy.IsActive =
+                true;
+
+            policy.UpdatedAt =
+                now;
+
+            policy.UpdatedBy =
+                actor.Id;
+
+            policy.Versions.Add(newVersion);
 
             await _repo.AddAuditLogAsync(
                 Audit(
-                    "DepositPolicy",
-                    "Update",
-                    policy.Id.ToString(),
-                    old,
-                    policy,
-                    r.Reason,
-                    propertyId),
+                    entity: "DepositPolicy",
+                    action: "DepositPolicyVersionCreated",
+                    id: policy.Id.ToString(),
+                    oldValue: oldVersionSnapshot,
+                    newValue: new
+                    {
+                        newVersion.Id,
+                        newVersion.DepositId,
+                        newVersion.Version,
+                        newVersion.Name,
+                        newVersion.Type,
+                        newVersion.Amount,
+                        newVersion.Percentage,
+                        newVersion.ValidFrom,
+                        newVersion.ValidTo,
+                        newVersion.IsActive
+                    },
+                    reason: request.Reason,
+                    propertyId: propertyId),
                 ct);
 
-            await _repo.SaveChangesAsync(ct);
+            try
+            {
+                await _repo.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                return Fail<DepositPolicyResponse>(
+                    "Concurrency conflict. The deposit policy was modified by another user.",
+                    409);
+            }
+            catch (DbUpdateException)
+            {
+                return Fail<DepositPolicyResponse>(
+                    "The deposit policy version could not be created.",
+                    409);
+            }
 
-            return Created(ToResponse(policy));
+            return Ok(
+                ToResponse(policy));
         }
 
-        public async Task<
-            ResponseStatus<DepositPolicyResponse>>
-            SetDepositPolicyStatusAsync(
-                int propertyId,
-                int policyId,
-                bool active,
-                CancellationToken ct = default)
-        {
-            return await SetDeposit(
-                propertyId,
-                policyId,
-                active,
-                ct);
-        }
+
+        public async Task<ResponseStatus<DepositPolicyResponse>>
+            SetDepositPolicyStatusAsync(int propertyId,
+            int policyId,
+            bool active,
+            CancellationToken ct = default)
+            => await SetDeposit(propertyId, policyId, active, ct);
+
+
+
 
         // ============================================================
         // Private Methods
         // ============================================================
 
         private async Task<ResponseStatus<PropertyResponse>>
-            SetPropertyStatus(
-                int id,
+            SetPropertyStatus(string expected,
+            User actor,    int id,
                 PropertyStatus status,
                 string? reason,
                 CancellationToken ct)
         {
             var auth =
-                await AuthorizeAsync(
-                    id,
-                    true,
-                    ct);
+                await AuthorizeAsync(actor.Id, id, ct);
 
             if (!auth.Success)
             {
@@ -1308,18 +1060,37 @@ namespace HotelHup.APPLICATION.services.implementation
                     "Property not found.",
                     404);
             }
-
+            var requeststate = status;
+            if (requeststate==property.Status)
+            {
+                return Ok<PropertyResponse>(ToResponse(property));
+            }
+            var isadmin = await IsAdminAsync(actor.Id,ct);
             if (
                 status == PropertyStatus.Inactive
                 && await _repo.HasActiveReservationsAsync(
                     id,
                     ct)
-                && !IsGlobalAdmin())
+                &&( isadmin.Data!=null&&!isadmin.Data.IsAdmin))
             {
                 return Fail<PropertyResponse>(
                     "Active reservations require Manager or Admin authorization before deactivation.",
                     403);
             }
+            // Validate expected RowVersion
+            if (property.Settings == null)
+            {
+                return Fail<PropertyResponse>(
+                    "Property settings not found. please add property setting",
+                    404);
+            }
+            if (!CheckRowVersion(expected, property.RowVersion))
+            {
+                return Fail<PropertyResponse>(
+                    "The property was modified by another user. Please refresh and try again.",
+                    409);
+            }
+
 
             var oldStatus =
                 property.Status;
@@ -1331,7 +1102,7 @@ namespace HotelHup.APPLICATION.services.implementation
                 DateTimeOffset.UtcNow;
 
             property.UpdatedBy =
-                ActorId();
+                actor.Id;
 
             await _repo.AddAuditLogAsync(
                 Audit(
@@ -1349,28 +1120,259 @@ namespace HotelHup.APPLICATION.services.implementation
                     reason),
                 ct);
 
-            if (!await Save(ct))
+            try
+            {
+                await _repo.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateConcurrencyException)
             {
                 return Fail<PropertyResponse>(
-                    "Concurrency conflict.",
+                    "The property was modified by another user. Please refresh and try again.",
                     409);
             }
 
             return Ok(ToResponse(property));
         }
 
+        
+
+
+        private static List<string> ValidateDeposit(
+      CreateDepositPolicyRequest request,
+      DepositPolicy? existing)
+        {
+            var errors = new List<string>();
+
+            var newValidFrom =
+                request.ValidFrom.ToUniversalTime();
+
+            var newValidTo =
+                request.ValidTo?.ToUniversalTime();
+
+            // التحقق من أن ValidTo أكبر من ValidFrom
+            if (newValidTo.HasValue &&
+                newValidTo.Value <= newValidFrom)
+            {
+                errors.Add(
+                    "ValidTo must be greater than ValidFrom.");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                errors.Add("Name is required.");
+            }
+
+            if (request.Amount < 0 ||
+                request.Percentage < 0)
+            {
+                errors.Add(
+                    "Amount and percentage cannot be negative.");
+            }
+
+            if (request.Type == DepositType.Percentage &&
+                (request.Percentage > 100 ||
+                 request.Amount != 0))
+            {
+                errors.Add(
+                    "Percentage deposits require amount 0 and percentage between 0 and 100.");
+            }
+
+            if (request.Type == DepositType.FixedAmount &&
+                request.Percentage != 0)
+            {
+                errors.Add(
+                    "Fixed amount deposits require percentage 0.");
+            }
+
+            /*
+             * في حالة إنشاء DepositPolicy جديدة:
+             * existing ستكون null، وبالتالي لا يوجد إصدار سابق
+             * ونكتفي بالـ validation العادي فقط.
+             */
+            if (existing is null)
+            {
+                return errors;
+            }
+
+            var previousVersion =
+                existing.Versions
+                    .OrderByDescending(x => x.Version)
+                    .FirstOrDefault();
+
+            /*
+             * لو الـ Policy موجودة لكن ليس لديها Versions،
+             * لا يوجد إصدار نقارن به.
+             */
+            if (previousVersion is null)
+            {
+                return errors;
+            }
+
+            var versionDateErrors =
+                ValidateNewVersionDates(
+                    newValidFrom: newValidFrom,
+                    newValidTo: newValidTo,
+                    previousValidFrom: previousVersion.ValidFrom,
+                    previousValidTo: previousVersion.ValidTo,
+                    policyName: "deposit policy");
+
+            errors.AddRange(versionDateErrors);
+
+            return errors;
+        }
+        private static List<string> ValidateNewVersionDates(
+    DateTimeOffset newValidFrom,
+    DateTimeOffset? newValidTo,
+    DateTimeOffset previousValidFrom,
+    DateTimeOffset? previousValidTo,
+    string policyName)
+        {
+            var errors = new List<string>();
+
+            var newFrom =
+                newValidFrom.ToUniversalTime();
+
+            var newTo =
+                newValidTo?.ToUniversalTime();
+
+            var previousFrom =
+                previousValidFrom.ToUniversalTime();
+
+            var previousTo =
+                previousValidTo?.ToUniversalTime();
+
+            // بداية الإصدار الجديد يجب أن تكون بعد بداية الإصدار السابق
+            if (newFrom <= previousFrom)
+            {
+                errors.Add(
+                    $"New {policyName} version ValidFrom must be greater than the previous version ValidFrom.");
+            }
+
+            /*
+             * إذا كان للإصدار السابق ValidTo،
+             * فلا يمكن أن يبدأ الإصدار الجديد قبله.
+             */
+            if (previousTo.HasValue &&
+                newFrom < previousTo.Value)
+            {
+                errors.Add(
+                    $"New {policyName} version overlaps the previous version.");
+            }
+
+            // ValidTo للإصدار الجديد يجب أن تكون بعد ValidFrom
+            if (newTo.HasValue &&
+                newTo.Value <= newFrom)
+            {
+                errors.Add(
+                    $"New {policyName} version ValidTo must be greater than ValidFrom.");
+            }
+
+            return errors;
+        }
+
+        private static List<string>
+    ValidateDepositUpdate(
+        UpdateDepositPolicyRequest request,
+        DepositPolicyVersion previousVersion)
+        {
+            var errors =
+                new List<string>();
+
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                errors.Add(
+                    "Name is required.");
+            }
+            else if (request.Name.Trim().Length > 150)
+            {
+                errors.Add(
+                    "Name cannot exceed 150 characters.");
+            }
+
+            if (request.Amount < 0)
+            {
+                errors.Add(
+                    "Amount cannot be negative.");
+            }
+
+            if (request.Percentage < 0)
+            {
+                errors.Add(
+                    "Percentage cannot be negative.");
+            }
+
+            if (request.Type == DepositType.Percentage)
+            {
+                if (request.Percentage > 100)
+                {
+                    errors.Add(
+                        "Percentage must be between 0 and 100.");
+                }
+
+                if (request.Amount != 0)
+                {
+                    errors.Add(
+                        "Percentage deposits require Amount to be zero.");
+                }
+            }
+
+            if (request.Type == DepositType.FixedAmount &&
+                request.Percentage != 0)
+            {
+                errors.Add(
+                    "Fixed amount deposits require Percentage to be zero.");
+            }
+
+            if (request.ValidTo.HasValue &&
+                request.ValidTo.Value <= request.ValidFrom)
+            {
+                errors.Add(
+                    "ValidTo must be greater than ValidFrom.");
+            }
+
+            errors.AddRange(
+                ValidateNewVersionDates(
+                    newValidFrom: request.ValidFrom,
+                    newValidTo: request.ValidTo,
+                    previousValidFrom: previousVersion.ValidFrom,
+                    previousValidTo: previousVersion.ValidTo,
+                    policyName: "deposit policy"));
+
+            if (!string.IsNullOrWhiteSpace(request.Reason) &&
+                request.Reason.Length > 500)
+            {
+                errors.Add(
+                    "Reason cannot exceed 500 characters.");
+            }
+
+            return errors
+                .Distinct()
+                .ToList();
+        }
+
+        private static DepositPolicyVersion
+            NewDepositVersion(DepositPolicy policy, CreateDepositPolicyRequest r, int version, DateTimeOffset now) => new()
+        {
+            Deposit = policy,
+            Version = version,
+            Name = Clean(r.Name),
+            Type = r.Type,
+            Amount = r.Amount,
+            Percentage = r.Percentage,
+            ValidFrom = r.ValidFrom.ToUniversalTime(),
+            ValidTo = r.ValidTo?.ToUniversalTime(),
+            IsActive = true,
+            CreatedAt = now,
+            CreatedBy = null
+        };
         private async Task<ResponseStatus<TaxResponse>>
             SetTax(
-                int propertyId,
+               User actor, int propertyId,
                 int taxId,
                 bool active,
                 CancellationToken ct)
         {
-            var auth =
-                await AuthorizeAsync(
-                    propertyId,
-                    true,
-                    ct);
+            var auth = await AuthorizeAsync(actor.Id,propertyId,ct);
 
             if (!auth.Success)
             {
@@ -1395,7 +1397,7 @@ namespace HotelHup.APPLICATION.services.implementation
                 DateTimeOffset.UtcNow;
 
             tax.UpdatedBy =
-                ActorId();
+                actor.Id;
 
             await _repo.AddAuditLogAsync(
                 Audit(
@@ -1412,78 +1414,18 @@ namespace HotelHup.APPLICATION.services.implementation
                     null,
                     propertyId),
                 ct);
-
-            if (!await Save(ct))
+            try
+            {
+                await _repo.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateConcurrencyException)
             {
                 return Fail<TaxResponse>(
-                    "Concurrency conflict.",
+                    "concurrency conflict.",
                     409);
             }
 
             return Ok(ToResponse(tax));
-        }
-
-        private async Task<
-            ResponseStatus<CancellationPolicyResponse>>
-            SetCancellation(
-                int propertyId,
-                int policyId,
-                bool active,
-                CancellationToken ct)
-        {
-            var auth =
-                await AuthorizeAsync(
-                    propertyId,
-                    true,
-                    ct);
-
-            if (!auth.Success)
-            {
-                return Fail<CancellationPolicyResponse>(auth);
-            }
-
-            var policy =
-                await _repo.GetTrackedCancellationPolicyAsync(
-                    propertyId,
-                    policyId,
-                    ct);
-
-            if (policy is null)
-            {
-                return Fail<CancellationPolicyResponse>(
-                    "Cancellation policy not found.",
-                    404);
-            }
-
-            policy.Status =
-                active
-                    ? PolicyStatus.Active
-                    : PolicyStatus.Inactive;
-
-            await _repo.AddAuditLogAsync(
-                Audit(
-                    "CancellationPolicy",
-                    active
-                        ? "Activate"
-                        : "Deactivate",
-                    policyId.ToString(),
-                    null,
-                    new
-                    {
-                        policy.Status
-                    },
-                    null,
-                    propertyId),
-                ct);
-
-            if (!await Save(ct))
-            {
-                return Fail<CancellationPolicyResponse>(
-                    "Concurrency conflict.",
-                    409);
-            }
-
-            return Ok(ToResponse(policy));
         }
 
         private async Task<
@@ -1519,6 +1461,8 @@ namespace HotelHup.APPLICATION.services.implementation
             }
 
             policy.IsActive = active;
+            var currentVersion = policy.Versions.OrderByDescending(x => x.Version).FirstOrDefault();
+            if (currentVersion is not null) currentVersion.IsActive = active;
 
             await _repo.AddAuditLogAsync(
                 Audit(
@@ -1546,18 +1490,17 @@ namespace HotelHup.APPLICATION.services.implementation
             return Ok(ToResponse(policy));
         }
 
-      
-
-        private async Task<ResponseStatus<bool>> AuthorizeAsync(
-       string actorId,
-       int? propertyId,
-       CancellationToken cancellationToken = default)
+        private async Task<ResponseStatus<AuthorizationDataDto>> IsAdminAsync(
+            string actorId,
+            CancellationToken cancellationToken = default)
         {
-            var actor = await repository.GetByIdAsync(actorId, cancellationToken);
+            var actor = await repository.GetByIdAsync(
+                actorId,
+                cancellationToken);
 
             if (actor is null)
             {
-                return new ResponseStatus<bool>(
+                return new ResponseStatus<AuthorizationDataDto>(
                     message: "User not found.",
                     statusCode: 404);
             }
@@ -1573,15 +1516,48 @@ namespace HotelHup.APPLICATION.services.implementation
                     nameof(UserRole.Admin),
                     StringComparison.OrdinalIgnoreCase));
 
-            // Admin has global access
-            if (isAdmin)
+            return new ResponseStatus<AuthorizationDataDto>(
+                data: new AuthorizationDataDto
+                {
+                    Actor = actor,
+                    Roles = roles,
+                    IsAdmin = isAdmin
+                },
+                statusCode: 200);
+        }
+        private async Task<ResponseStatus<bool>> AuthorizeAsync(
+        string actorId,
+        int? propertyId,
+        CancellationToken cancellationToken = default)
+        {
+            var result = await IsAdminAsync(
+                actorId,
+                cancellationToken);
+
+            if (!result.Success)
             {
                 return new ResponseStatus<bool>(
-                    data: true,
-                    statusCode: 200);
+                    message: result.Message,
+                    statusCode: result.StatusCode);
             }
 
-            var isManager = roles.Any(role =>
+            if (result.Data is null)
+            {
+                return new ResponseStatus<bool>
+                    (message: "Authorization data not found.",
+                    statusCode: 403);
+            }
+            var data = result.Data; 
+            // Admin → Global access
+            if (data.IsAdmin)
+            {
+                return new ResponseStatus<bool>
+                    ( data: true,
+                    statusCode: 200); 
+            }
+ 
+            // Check Manager
+            var isManager = data.Roles.Any(role =>
                 role.IsActive &&
                 string.Equals(
                     role.Name,
@@ -1596,7 +1572,7 @@ namespace HotelHup.APPLICATION.services.implementation
             }
 
             // Manager must belong to a property
-            if (!actor.PropertyId.HasValue)
+            if (!data.Actor.PropertyId.HasValue)
             {
                 return new ResponseStatus<bool>(
                     message: "Manager is not assigned to a property.",
@@ -1605,7 +1581,7 @@ namespace HotelHup.APPLICATION.services.implementation
 
             // Manager can access only his property
             if (!propertyId.HasValue ||
-                actor.PropertyId.Value != propertyId.Value)
+                data.Actor.PropertyId.Value != propertyId.Value)
             {
                 return new ResponseStatus<bool>(
                     message: "You are not authorized to access this property.",
@@ -1623,12 +1599,12 @@ namespace HotelHup.APPLICATION.services.implementation
             object? oldValue,
             object? newValue,
             string? reason = null,
-            int? propertyId = null)
+            int? propertyId = null,string? actorid=null)
         {
             return new AddAuditLogDto
             {
                 userid =
-                    ActorId() ?? "system",
+                    actorid ?? "system",
 
                 TargetEntity =
                     entity,
@@ -1672,6 +1648,7 @@ namespace HotelHup.APPLICATION.services.implementation
 
             return value.Trim();
         }
+     
 
         private static string Normalize(
             string value)
@@ -1704,25 +1681,156 @@ namespace HotelHup.APPLICATION.services.implementation
                 return false;
             }
         }
-
-        private static bool CheckVersion(
-            string? expected,
-            byte[] actual)
+        private static bool IsValidIsoCurrency(
+ string? currency)
         {
-            return
-                string.IsNullOrWhiteSpace(expected)
-                ||
-                Convert.ToBase64String(
-                    actual ?? Array.Empty<byte>())
-                == expected;
+            if (string.IsNullOrWhiteSpace(currency))
+            {
+                return false;
+            }
+
+            var value =
+                currency.Trim().ToUpperInvariant();
+
+            return value.Length == 3 &&
+                   value.All(char.IsLetter);
         }
-        private static bool ValidCheckInCheckOutTime(
+        private static List<string> ValidatePropertyTimes(
+    TimeSpan checkIn,
+    TimeSpan checkOut
+    )
+        {
+            var errors = new List<string>();
+
+            if (checkIn < TimeSpan.Zero ||
+                checkIn >= TimeSpan.FromDays(1))
+            {
+                errors.Add(
+                    "DefaultCheckInTime must be between 00:00 and 23:59:59.");
+            }
+
+            if (checkOut < TimeSpan.Zero ||
+                checkOut >= TimeSpan.FromDays(1))
+            {
+                errors.Add(
+                    "DefaultCheckOutTime must be between 00:00 and 23:59:59.");
+            }
+            if (checkIn == checkOut)
+            {
+                errors.Add(
+                    "Check-in and check-out times cannot be equal.");
+            }
+
+            return errors;
+        }
+        private static List<string> ValidateCreateProperty(
+    CreatePropertyRequest request)
+        {
+            var errors = new List<string>();
+
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                errors.Add("Name is required.");
+            }
+
+           
+
+            if (string.IsNullOrWhiteSpace(request.Code))
+            {
+                errors.Add("Code is required.");
+            }
+
+            if (!IsValidIsoCurrency(
+                    request.Settings.Currency))
+            {
+                errors.Add(
+                    "Currency must be a valid ISO 4217 three-letter code.");
+            }
+
+            if (!ValidZone(
+                    request.Settings.TimeZone))
+            {
+                errors.Add(
+                    "TimeZone must be a valid IANA time zone.");
+            }
+
+            errors.AddRange(
+                ValidatePropertyTimes(
+                    request.Settings.CheckInTime,
+                    request.Settings.CheckOutTime));
+
+            return errors;
+        }
+
+        private static bool CheckRowVersion(
+      string expectedRowVersion,
+      byte[] actualRowVersion)
+        {
+            if (string.IsNullOrWhiteSpace(expectedRowVersion))
+            {
+                return false;
+            }
+
+            byte[] expectedBytes;
+
+            try
+            {
+                expectedBytes =
+                    Convert.FromBase64String(expectedRowVersion);
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+
+            return expectedBytes.SequenceEqual(
+                actualRowVersion ?? Array.Empty<byte>());
+        }
+        private static List<string>
+    ValidateCancellationPolicyStatusRequest(
+        ChangeCancellationPolicyStatusRequest request,
+        bool activating)
+        {
+            var errors = new List<string>();
+
+            if (string.IsNullOrWhiteSpace(
+                    request.ExpectedRowVersion))
+            {
+                errors.Add(
+                    "ExpectedRowVersion is required.");
+            }
+
+            if (!activating)
+            {
+                if (!request.Confirm)
+                {
+                    errors.Add(
+                        "Confirm must be true before deactivating a cancellation policy.");
+                }
+
+                if (string.IsNullOrWhiteSpace(
+                        request.Reason))
+                {
+                    errors.Add(
+                        "Reason is required when deactivating a cancellation policy.");
+                }
+                else if (request.Reason.Trim().Length < 2)
+                {
+                    errors.Add(
+                        "Reason must contain at least 2 characters.");
+                }
+            }
+
+            return errors;
+        }
+
+        private bool ValidCheckInCheckOutTime(
     TimeSpan checkInTime,
     TimeSpan checkOutTime)
         {
             return checkInTime != checkOutTime;
         }
-        private static List<string> ValidateProperty(
+        private   List<string> ValidateProperty(
             CreatePropertyRequest r)
         {
             var errors =
@@ -1769,7 +1877,7 @@ namespace HotelHup.APPLICATION.services.implementation
             return errors;
         }
 
-        private static List<string> ValidateDates(
+        private   List<string> ValidateDates(
             DateTimeOffset from,
             DateTimeOffset? to)
         {
@@ -1787,13 +1895,13 @@ namespace HotelHup.APPLICATION.services.implementation
             return new List<string>();
         }
 
-        private static List<string> ValidatePolicy(
+        private   async Task<List<string>> ValidatePolicy(
             DateTimeOffset from,
             DateTimeOffset? to,
             decimal fee,
             int free,
             int cutoff,
-            string rules)
+            string rules,string name,int propertyid,CancellationToken ct)
         {
             var errors =
                 ValidateDates(from, to);
@@ -1809,7 +1917,10 @@ namespace HotelHup.APPLICATION.services.implementation
                 errors.Add(
                     "Policy hours cannot be negative.");
             }
-
+            if (to<=from) 
+            {
+                errors.Add("validfrom must be less than validto");
+            }
             try
             {
                 JsonDocument.Parse(
@@ -1825,6 +1936,58 @@ namespace HotelHup.APPLICATION.services.implementation
 
             return errors;
         }
+        private async Task<ResponseStatus<Property>> AuthorizePropertyAccessAsync(
+            string actorId,
+            int propertyId,
+            CancellationToken ct)
+        {
+            // Check actor authorization
+            var auth = await IsAdminAsync(actorId, ct);
+
+            if (!auth.Success)
+            {
+                return new ResponseStatus<Property>(
+                    message: auth.Message,
+                    statusCode: auth.StatusCode);
+            }
+            // 2. Authorization data must exist
+            if (auth.Data is null)
+            {
+                return new ResponseStatus<Property>(
+                    message: "Authorization data not found.",
+                    statusCode: 403);
+            }
+            // Get property
+            var property = await _repo.GetByIdAsync(propertyId, ct);
+
+            if (property is null)
+            {
+                return new ResponseStatus<Property>(
+                    message: "Property is not found.",
+                    statusCode: 404);
+            }
+ 
+            // Admin can access all properties
+            if (auth.Data?.IsAdmin == true)
+            {
+                return new ResponseStatus<Property>(
+                    data: property,
+                    statusCode: 200);
+            }
+
+            // Non-admin must belong to the property
+            if (property.ID != auth.Data?.Actor.PropertyId)
+            {
+                return new ResponseStatus<Property>(
+                    message: "You are not authorized to access this property.",
+                    statusCode: 403);
+            }
+
+            return new ResponseStatus<Property>(
+                data: property,
+                statusCode: 200);
+        }
+   
 
         private static ResponseStatus<T> Ok<T>(T value)
         {
@@ -1850,6 +2013,29 @@ namespace HotelHup.APPLICATION.services.implementation
                 errors: errors,
                 statusCode: statusCode);
         }
+        private static DepositPolicyVersion
+    NewDepositVersion(
+        DepositPolicy policy,
+        CreateDepositPolicyRequest request,
+        int version,
+        DateTimeOffset now,
+        string actorId)
+        {
+            return new DepositPolicyVersion
+            {
+                Deposit = policy,
+                Version = version,
+                Name = Clean(request.Name),
+                Type = request.Type,
+                Amount = request.Amount,
+                Percentage = request.Percentage,
+                ValidFrom = request.ValidFrom.ToUniversalTime(),
+                ValidTo = request.ValidTo?.ToUniversalTime(),
+                IsActive = true,
+                CreatedAt = now,
+                CreatedBy = actorId
+            };
+        }
 
         private static ResponseStatus<T> Fail<T>(
             ResponseStatus<bool> response)
@@ -1867,7 +2053,7 @@ namespace HotelHup.APPLICATION.services.implementation
         }
 
         private static PropertyResponse ToResponse(
-            Property property)
+             Property property)
         {
             return new PropertyResponse
             {
@@ -1877,7 +2063,7 @@ namespace HotelHup.APPLICATION.services.implementation
                 Description = property.Description,
                 Status = property.Status,
 
-                Settings =
+                SettingsResponse =
                     property.Settings is null
                         ? null
                         : ToResponse(property.Settings),
@@ -1954,8 +2140,7 @@ namespace HotelHup.APPLICATION.services.implementation
                 RequireInspectionBeforeAvailable =
                     settings.RequireInspectionBeforeAvailable,
 
-                RowVersion =
-                    R(settings.RowVersion)
+                RowVersion = settings.RowVersion
             };
         }
 
@@ -1974,10 +2159,8 @@ namespace HotelHup.APPLICATION.services.implementation
                 IsActive = tax.IsActive,
                 ValidFrom = tax.ValidFrom,
                 ValidTo = tax.ValidTo,
-                RowVersion = R(tax.RowVersion)
             };
         }
-
         private static CancellationPolicyResponse ToResponse(
             CancellationPolicy policy)
         {
@@ -1987,42 +2170,114 @@ namespace HotelHup.APPLICATION.services.implementation
                 PropertyId = policy.PropertyId,
                 Name = policy.Name,
                 Description = policy.Description,
-                ValidFrom = policy.ValidFrom,
-                ValidTo = policy.ValidTo,
                 Status = policy.Status,
-                Rules = policy.Rules,
-                Version = policy.Version,
-                FreeCancellationHours =
-                    policy.FreeCancellationHours,
-                CancellationFeePercentage =
-                    policy.CancellationFeePercentage,
-                FixedCancellationFee =
-                    policy.FixedCancellationFee,
-                IsNonRefundable =
-                    policy.IsNonRefundable,
-                CutoffHours =
-                    policy.CutoffHours,
+                CurrentVersion = policy.CurrentVersion,
                 RowVersion =
-                    R(policy.RowVersion)
+                    Convert.ToBase64String(
+                        policy.RowVersion ?? Array.Empty<byte>()),
+
+                Versions = policy.Versions
+                    .OrderByDescending(x => x.Version)
+                    .Select(x =>
+                        new CancellationPolicyVersionResponse
+                        {
+                            Id = x.Id,
+                            CancellationPolicyId =
+                                x.CancellationPolicyId == 0
+                                    ? policy.Id
+                                    : x.CancellationPolicyId,
+                            Version = x.Version,
+                            ValidFrom = x.ValidFrom,
+                            ValidTo = x.ValidTo,
+                            Rules = x.Rules,
+                            FreeCancellationHours =
+                                x.FreeCancellationHours,
+                            CancellationFeePercentage =
+                                x.CancellationFeePercentage,
+                            FixedCancellationFee =
+                                x.FixedCancellationFee,
+                            IsNonRefundable =
+                                x.IsNonRefundable,
+                            CutoffHours =
+                                x.CutoffHours,
+                            CreatedAt = x.CreatedAt,
+                            CreatedBy = x.CreatedBy,
+                            UpdatedAt = x.UpdatedAt,
+                            UpdatedBy = x.UpdatedBy
+                        })
+                    .ToArray()
             };
         }
 
-        private static DepositPolicyResponse ToResponse(
-            DepositPolicy policy)
+        private static DepositPolicyResponse
+         ToResponse(DepositPolicy policy)
         {
             return new DepositPolicyResponse
             {
-                Id = policy.Id,
-                PropertyId = policy.PropertyId,
-                Name = policy.Name,
-                Type = policy.Type,
-                Amount = policy.Amount,
-                Percentage = policy.Percentage,
-                ValidFrom = policy.ValidFrom,
-                ValidTo = policy.ValidTo,
-                IsActive = policy.IsActive,
-                Version = policy.Version,
-                RowVersion = R(policy.RowVersion)
+                Id =
+                    policy.Id,
+
+                PropertyId =
+                    policy.PropertyId,
+
+                IsActive =
+                    policy.IsActive,
+
+                CurrentVersion =
+                    policy.CurrentVersion,
+
+                RowVersion =
+                    Convert.ToBase64String(
+                        policy.RowVersion ?? Array.Empty<byte>()),
+
+                Versions =
+                    policy.Versions
+                        .OrderByDescending(v => v.Version)
+                        .Select(v => new DepositPolicyVersionResponse
+                        {
+                            Id =
+                                v.Id,
+
+                            DepositId =
+                                v.DepositId,
+
+                            Version =
+                                v.Version,
+
+                            Name =
+                                v.Name,
+
+                            Type =
+                                v.Type,
+
+                            Amount =
+                                v.Amount,
+
+                            Percentage =
+                                v.Percentage,
+
+                            ValidFrom =
+                                v.ValidFrom,
+
+                            ValidTo =
+                                v.ValidTo,
+
+                            IsActive =
+                                v.IsActive,
+
+                            CreatedAt =
+                                v.CreatedAt,
+
+                            CreatedBy =
+                                v.CreatedBy,
+
+                            UpdatedAt =
+                                v.UpdatedAt,
+
+                            UpdatedBy =
+                                v.UpdatedBy
+                        })
+                        .ToList()
             };
         }
     }
