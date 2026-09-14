@@ -61,7 +61,8 @@ namespace HotelHup.CORE.Entities
         public CancellationPolicyVersion?
             CancellationPolicyVersion
         { get; set; }
-
+        //depositversion
+        //rateplaneversion
         public ICollection<ReservationRoom> ReservationRooms { get; set; }
             = new List<ReservationRoom>();
         public ICollection<ReservationTaxSnapshot> ReservationTaxSnapshots { get; set; } = 

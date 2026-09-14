@@ -20,7 +20,8 @@ namespace HotelHup.CORE.Entities
 
         [Column(TypeName = "decimal(18,2)")]
         public decimal BasePrice { get; set; }
-
+        [Timestamp]
+        public byte[] RowVersion { get; set; } = Array.Empty<byte>();
         public int MaxAdults { get; set; }
         public int MaxChildren { get; set; }
         [ForeignKey("Property")]
@@ -29,7 +30,7 @@ namespace HotelHup.CORE.Entities
         public bool IsActive { get; set; } = true;
         // Navigation
         public ICollection<Room> Rooms { get; set; } = new List<Room>();
-        public Property Property { get; set; }
+        public Property? Property { get; set; }
         public ICollection<RatePlan> RatePlans { get; set; }= new List<RatePlan>();
     }
 }
