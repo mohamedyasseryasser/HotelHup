@@ -1,10 +1,15 @@
-using System.Text;
- using HotelHup.CORE.Entities;
+using HotelHup.APPLICATION.interfacesrepo;
+using HotelHup.APPLICATION.services.implementation;
+using HotelHup.APPLICATION.services.interfaces;
+using HotelHup.CORE.Entities;
 using HotelHup.INFRASTRUCTURE.Context;
- using Microsoft.AspNetCore.Authentication.JwtBearer;
+using HotelHup.INFRASTRUCTURE.repos;
+using HotelHup.INFRASTRUCTURE.services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 namespace HotelHup
 {
@@ -53,7 +58,32 @@ namespace HotelHup
                 };
             });
             builder.Services.AddAuthorization();
+            builder.Services.AddHttpContextAccessor();
 
+            // Repositories
+            builder.Services.AddScoped<IAuthRepository, AuthRepository>();
+            builder.Services.AddScoped<IPropertyRepository, PropertyRepository>();
+            builder.Services.AddScoped<
+                IPropertyCancellationRepo,
+                PropertycancellationRepo>();
+            builder.Services.AddScoped<
+                IPropertyDepositRepo,
+                PropertyDepositRepo>();
+            builder.Services.AddScoped<IPropertyTaxRepo, PropertyTaxRepo>();
+            builder.Services.AddScoped<IUserRepository, UserRepository>();
+
+            // Application services
+            builder.Services.AddScoped<IAuthService, AuthService>();
+            builder.Services.AddScoped<
+                ICancellationPolicyService,
+                Cancellationpolicyservice>();
+            builder.Services.AddScoped<
+                IPropertyDepositService,
+                propertydepositservicecs>();
+            builder.Services.AddScoped<IPropertyService, PropertyService>();
+            builder.Services.AddScoped<IPropertyTax, PropertyTax>();
+            builder.Services.AddScoped<ITokenService, TokenService>();
+            builder.Services.AddScoped<IUserService, UserService>();
             builder.Services.AddCors(options => options.AddPolicy("AngularPolicy", policy =>
                 policy.WithOrigins("http://localhost:4200")
                       .AllowAnyHeader()

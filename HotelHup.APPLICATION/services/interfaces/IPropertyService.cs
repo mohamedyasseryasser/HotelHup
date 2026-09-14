@@ -25,18 +25,7 @@ namespace HotelHup.APPLICATION.services.interfaces
         Task<ResponseStatus<PropertyResponse>> DeactivateAsync(string expected,User user,int id, DeactivatePropertyRequest request, CancellationToken ct = default);
         Task<ResponseStatus<PropertySettingsResponse>> GetSettingsAsync(User actor,int id, CancellationToken ct = default);
         Task<ResponseStatus<PropertySettingsResponse>> UpdateSettingsAsync(User actor,int id, string ifmatch,UpdatePropertySettingsRequest request, CancellationToken ct = default);
-        Task<ResponseStatus<IReadOnlyList<TaxResponse>>> GetTaxesAsync(User actor,int propertyId, CancellationToken ct = default);
-        Task<ResponseStatus<TaxResponse>> GetTaxAsync(User actor,int propertyId, int taxId, CancellationToken ct = default);
-        Task<ResponseStatus<TaxResponse>> CreateTaxAsync(User actor,int propertyId, CreateTaxRequest request, CancellationToken ct = default);
-        Task<ResponseStatus<TaxResponse>> UpdateTaxAsync(User actor,int propertyId, int taxId, UpdateTaxRequest request, CancellationToken ct = default);
-        Task<ResponseStatus<TaxResponse>> SetTaxStatusAsync(User actor,int propertyId, int taxId, bool active, CancellationToken ct = default);
-      
-        Task<ResponseStatus<IReadOnlyList<DepositPolicyResponse>>> GetDepositPoliciesAsync(User actor,int propertyId, CancellationToken ct = default);
-        Task<ResponseStatus<DepositPolicyResponse>> GetDepositPolicyAsync(User actor,int propertyId, int id, CancellationToken ct = default);
-        Task<ResponseStatus<DepositPolicyResponse>> CreateDepositPolicyAsync(User actor,int propertyId, CreateDepositPolicyRequest request, CancellationToken ct = default);
-        Task<ResponseStatus<DepositPolicyResponse>> UpdateDepositPolicyAsync(User actor,int propertyId, int id, UpdateDepositPolicyRequest request, string ifmathc,CancellationToken ct = default);
-        Task<ResponseStatus<DepositPolicyResponse>> SetDepositPolicyStatusAsync(User actor,int propertyId, int id, bool active, CancellationToken ct = default);
-
+        
 
     }
 }

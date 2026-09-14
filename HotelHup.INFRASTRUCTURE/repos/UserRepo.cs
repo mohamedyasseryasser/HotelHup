@@ -113,10 +113,17 @@ namespace HotelHup.INFRASTRUCTURE.repos
                 .ToListAsync(cancellationToken);
         }
 
-        public async Task<List<Role>> GetRolesByIdsAsync(IEnumerable<string> roleIds, CancellationToken cancellationToken = default)
+        public async Task<IReadOnlyList<Role>> GetRolesByIdsAsync(
+            IEnumerable<string> roleIds,
+            CancellationToken cancellationToken = default)
         {
-            var ids = roleIds.Distinct(StringComparer.Ordinal).ToArray();
-            return await _context.Set<Role>()
+            var ids =
+                roleIds
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+
+            return await _context
+                .Set<Role>()
                 .Where(role => ids.Contains(role.Id))
                 .AsNoTracking()
                 .ToListAsync(cancellationToken);

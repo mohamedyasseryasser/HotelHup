@@ -150,45 +150,66 @@ namespace HotelHup.API.Controllers
             {
                 return Result(CurrentUserLogin);
             }
-            var result = await _service.UpdateAsync(CurrentUserLogin.Data,id, request, ct);
+            var result = await _service.UpdateAsync(CurrentUserLogin.Data,ifmatch,id, request, ct);
 
             return Result(result);
         }
 
         [HttpPost("{id:int}/activate")]
-        [Authorize(Policy = Permissions.Properties.Activate)]          
-        public async Task<IActionResult> Activate(                      
-          [FromBody]  string expected,int id,
+        [Authorize(Policy = Permissions.Properties.Activate)]
+        public async Task<IActionResult> Activate(
+            [FromHeader(Name = "If-Match")] string expected,
+            int id,
             CancellationToken ct)
         {
-            //authentaction check
-            var CurrentUserLogin = await GetCurrentuserLogeined();
-            if (!CurrentUserLogin.Success || CurrentUserLogin.Data == null)
+            var CurrentUserLogin =
+                await GetCurrentuserLogeined();
+
+            if (!CurrentUserLogin.Success ||
+                CurrentUserLogin.Data == null)
             {
                 return Result(CurrentUserLogin);
             }
-            var result = await _service.ActivateAsync(expected,CurrentUserLogin.Data,id, ct);    
+
+            var result =
+                await _service.ActivateAsync(
+                    expected,
+                    CurrentUserLogin.Data,
+                    id,
+                    ct);
 
             return Result(result);
         }
+
 
         [HttpPost("{id:int}/deactivate")]
         [Authorize(Policy = Permissions.Properties.Deactivate)]
         public async Task<IActionResult> Deactivate(
-           [FromBody] string expected,int id,
-            DeactivatePropertyRequest request,
-            CancellationToken ct)
+       [FromHeader(Name = "If-Match")] string expected,
+       int id,
+       [FromBody] DeactivatePropertyRequest request,
+       CancellationToken ct)
         {
-            //authentaction check
-            var CurrentUserLogin = await GetCurrentuserLogeined();
-            if (!CurrentUserLogin.Success || CurrentUserLogin.Data == null)
+            var CurrentUserLogin =
+                await GetCurrentuserLogeined();
+
+            if (!CurrentUserLogin.Success ||
+                CurrentUserLogin.Data == null)
             {
                 return Result(CurrentUserLogin);
             }
-            var result = await _service.DeactivateAsync(expected,CurrentUserLogin.Data, id,request, ct);
+
+            var result =
+                await _service.DeactivateAsync(
+                    expected,
+                    CurrentUserLogin.Data,
+                    id,
+                    request,
+                    ct);
 
             return Result(result);
         }
+
 
         [HttpGet("{id:int}/settings")]
         [Authorize(Policy = Permissions.Properties.Read)]
@@ -228,158 +249,9 @@ namespace HotelHup.API.Controllers
             return Result(result);
         }
  
-        // =========================
-        // Deposit Policies                                     
-        // =========================
-
-        [HttpGet("{propertyId:int}/deposit-policies")]
-        [Authorize(Policy = Permissions.Properties.Read)]
-        public async Task<IActionResult> DepositPolicies(
-            int propertyId,
-            CancellationToken ct)
-        {
-            var user = await GetCurrentuserLogeined();
-
-            if (!user.Success || user.Data == null)
-                return Result(user);
-
-            var result =
-                await _service.GetDepositPoliciesAsync(
-                    user.Data,
-                    propertyId,
-                    ct);
-
-            return Result(result);
-        }
-
-        [HttpGet("{propertyId:int}/deposit-policies/{policyId:int}")]
-        [Authorize(Policy = Permissions.Properties.Read)]
-        public async Task<IActionResult> DepositPolicy(
-            int propertyId,
-            int policyId,
-            CancellationToken ct)
-        {
-            var user = await GetCurrentuserLogeined();
-
-            if (!user.Success || user.Data == null)
-                return Result(user);
-
-            var result =
-                await _service.GetDepositPolicyAsync(
-                    user.Data,
-                    propertyId,
-                    policyId,
-                    ct);
-
-            return Result(result);
-        }
-
-        [HttpPost("{propertyId:int}/deposit-policies")]
-        [Authorize(Policy = Permissions.Properties.Update)]
-        public async Task<IActionResult> CreateDepositPolicy(
-            int propertyId,
-            CreateDepositPolicyRequest request,
-            CancellationToken ct)
-        {
-            var validationResult =
-         ValidateModelState();
-
-            if (validationResult is not null)
-                return validationResult;
-
-            var user =
-                await GetCurrentuserLogeined();
-
-            if (!user.Success || user.Data == null)
-                return Result(user);
-
-            var result =
-                await _service.CreateDepositPolicyAsync(
-                    user.Data,
-                    propertyId,
-                    request,
-                    ct);
-
-            return Result(result);
-        }
-
-        [HttpPatch("{propertyId:int}/deposit-policies/{policyId:int}")]
-        [Authorize(Policy = Permissions.Properties.Update)]
-        public async Task<IActionResult> UpdateDepositPolicy(
-            int propertyId,
-            int policyId,
-            UpdateDepositPolicyRequest request,string ifmatch,
-            CancellationToken ct)
-        {
-            var validationResult =
-         ValidateModelState();
-
-            if (validationResult is not null)
-                return validationResult;
-
-            var user =
-                await GetCurrentuserLogeined();
-
-            if (!user.Success || user.Data == null)
-                return Result(user);
-            var result =
-                await _service.UpdateDepositPolicyAsync(
-               user.Data, propertyId,
-                    policyId,
-                    request,ifmatch,
-                    ct);
-
-            return Result(result);
-        }
-
-        [HttpPost(
-            "{propertyId:int}/deposit-policies/{policyId:int}/activate")]
-        [Authorize(Policy = Permissions.Properties.Update)]
-        public async Task<IActionResult> ActivateDepositPolicy(
-            int propertyId,
-            int policyId,
-            CancellationToken ct)
-        {
-            
-
-            var user =
-                await GetCurrentuserLogeined();
-
-            if (!user.Success || user.Data == null)
-                return Result(user);
-            var result =
-                await _service.SetDepositPolicyStatusAsync(
-                    user.Data,propertyId,
-                    policyId,
-                    true,
-                    ct);
-
-            return Result(result);
-        }
-
-        [HttpPost(
-            "{propertyId:int}/deposit-policies/{policyId:int}/deactivate")]
-        [Authorize(Policy = Permissions.Properties.Update)]
-        public async Task<IActionResult> DeactivateDepositPolicy(
-            int propertyId,
-            int policyId,
-            CancellationToken ct)
-        {
-          
-            var user =
-                await GetCurrentuserLogeined();
-
-            if (!user.Success || user.Data == null)
-                return Result(user);
-            var result =
-                await _service.SetDepositPolicyStatusAsync(
-                  user.Data,  propertyId,
-                    policyId,
-                    false,
-                    ct);
-
-            return Result(result);
-        }
+                              
+ 
+     
 
     }
 }
