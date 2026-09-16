@@ -509,7 +509,52 @@ namespace HotelHup.INFRASTRUCTURE.Context
                 })
                 .IsUnique()
                 .IsClustered(false);
+            });// RatePlanVersion
+            builder.Entity<RatePlanVersion>(entity =>
+            {
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.RatePlanId)
+                    .IsRequired();
+
+                entity.Property(x => x.VersionNumber)
+                    .IsRequired();
+
+                entity.Property(x => x.Price)
+                    .HasPrecision(18, 2)
+                    .IsRequired();
+
+                entity.Property(x => x.Rules)
+                    .HasMaxLength(2000);
+
+                entity.Property(x => x.IsRefundable)
+                    .IsRequired();
+
+                entity.Property(x => x.ValidFrom)
+                    .IsRequired();
+
+                entity.Property(x => x.ValidTo)
+                    .IsRequired(false);
+
+                entity.Property(x => x.IsActive)
+                    .IsRequired();
+
+                // One RatePlan has many RatePlanVersions
+                entity.HasOne(x => x.RatePlan)
+                    .WithMany(x => x.Versions)
+                    .HasForeignKey(x => x.RatePlanId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                // VersionNumber must be unique inside each RatePlan
+                entity.HasIndex(x => new
+                {
+                    x.RatePlanId,
+                    x.VersionNumber
+                })
+                .IsUnique()
+                .IsClustered(false);
             });
+
             //folio
             builder.Entity<Folio>(entity =>
             {
