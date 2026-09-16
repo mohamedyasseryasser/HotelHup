@@ -8,6 +8,7 @@ using HotelHup.INFRASTRUCTURE.services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 
@@ -71,7 +72,8 @@ namespace HotelHup
                 PropertyDepositRepo>();
             builder.Services.AddScoped<IPropertyTaxRepo, PropertyTaxRepo>();
             builder.Services.AddScoped<IUserRepository, UserRepository>();
-
+            builder.Services.AddScoped<IRoomTypeRepository, RoomTypeRepository>();
+            builder.Services.AddScoped<IRatePlanRepository, RatePlanRepository>();
             // Application services
             builder.Services.AddScoped<IAuthService, AuthService>();
             builder.Services.AddScoped<
@@ -84,6 +86,8 @@ namespace HotelHup
             builder.Services.AddScoped<IPropertyTax, PropertyTax>();
             builder.Services.AddScoped<ITokenService, TokenService>();
             builder.Services.AddScoped<IUserService, UserService>();
+            builder.Services.AddScoped<IRoomTypeService,RoomTypeService>();
+            builder.Services.AddScoped<IRatePlanService, RatePlanService>();
             builder.Services.AddCors(options => options.AddPolicy("AngularPolicy", policy =>
                 policy.WithOrigins("http://localhost:4200")
                       .AllowAnyHeader()

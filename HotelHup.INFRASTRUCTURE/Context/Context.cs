@@ -40,6 +40,7 @@ namespace HotelHup.INFRASTRUCTURE.Context
         public DbSet<ReservationRoom> ReservationRooms => Set<ReservationRoom>();
 
         public DbSet<RatePlan> RatePlans => Set<RatePlan>();
+        public DbSet<RatePlanVersion> RatePlansversions => Set<RatePlanVersion>();
 
         public DbSet<Folio> Folios => Set<Folio>();
 
@@ -472,9 +473,8 @@ namespace HotelHup.INFRASTRUCTURE.Context
             builder.Entity<RatePlan>(entity =>
             {
 
-                entity.HasKey(x => x.id).IsClustered(true);
-                entity.Property(x => x.Price)
-                    .HasPrecision(18, 2);
+                entity.HasKey(x => x.Id).IsClustered(true);
+               
 
                 entity.Property(x => x.Name)
                    .HasMaxLength(100)

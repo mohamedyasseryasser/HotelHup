@@ -174,10 +174,9 @@ namespace HotelHup.APPLICATION.services.implementation
         //-----------------------------------------------------------------------
         //private method
         //-----------------------------------------------------------------------
-
         private async Task<ResponseStatus<AuthorizationDataDto>> IsAdminAsync(
-            string actorId,
-            CancellationToken cancellationToken = default)
+    string actorId,
+    CancellationToken cancellationToken = default)
         {
             var actor = await userRepository.GetByIdAsync(
                 actorId,
@@ -277,6 +276,7 @@ namespace HotelHup.APPLICATION.services.implementation
                 data: true,
                 statusCode: 200);
         }
+
         private static bool CanAccessProperty(User actor, int? propertyId) =>
             actor is not null && (!actor.PropertyId.HasValue || !propertyId.HasValue || actor.PropertyId == propertyId);
 
