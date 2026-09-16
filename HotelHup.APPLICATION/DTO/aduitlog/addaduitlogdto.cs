@@ -11,11 +11,11 @@ namespace HotelHup.APPLICATION.DTO.aduitlog
     {
          public string userid { get; set; }= string.Empty;
         public string TargetEntity { get; init; } = string.Empty;
-        public string TargetEntityId { get; init; } = string.Empty;
+        public string TargetEntityId { get; set; } = string.Empty;
         public int? PropertyId { get; init; }
         public string Action { get; init; } = string.Empty;
         public object? OldValues { get; init; }
-        public object? NewValues { get; init; }
+        public object? NewValues { get; set; }
         [MaxLength(500)]
         public string? Reason { get; init; }
         public string? CorrelationId { get; init; }

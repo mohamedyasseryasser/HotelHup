@@ -1,9 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
+﻿ 
 using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace HotelHup.CORE.Entities
 {
@@ -25,7 +22,8 @@ namespace HotelHup.CORE.Entities
         public string? InternalNotes { get; set; }
 
         public string? GuestVisibleNotes { get; set; }
-
+        [Timestamp]
+        public byte[] RowVersion { get; set; } = Array.Empty<byte>();
         public bool IsActive { get; set; } = true;
         [MaxLength(20)]
         public string? Phone { get; set; }
@@ -37,5 +35,8 @@ namespace HotelHup.CORE.Entities
         public string? NationalId { get; set; }
         // Navigation
         public ICollection<Reservation> Reservations { get; set; } = new List<Reservation>();
+        [ForeignKey(nameof(property))]
+        public int propertyid { get; set; }
+        public Property? property { get; set; }
     }
 }

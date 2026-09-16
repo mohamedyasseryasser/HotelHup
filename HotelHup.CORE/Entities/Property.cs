@@ -28,4 +28,5 @@ public class Property : BaseEntity
     public ICollection<Tax> Taxes { get; set; } = new List<Tax>();
     public ICollection<CancellationPolicy> CancellationPolicies { get; set; } = new List<CancellationPolicy>();
     public ICollection<DepositPolicy> DepositPolicies { get; set; } = new List<DepositPolicy>();
+    public ICollection<Guest> Guests { get; set; }= new List<Guest>();
 }
