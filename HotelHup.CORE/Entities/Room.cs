@@ -20,7 +20,8 @@ namespace HotelHup.CORE.Entities
 
         [Column(TypeName = "decimal(18,2)")]
         public decimal PricePerNight { get; set; }
-
+        [Timestamp]
+        public byte[] RowVersion { get; set; } = Array.Empty<byte>();
         public bool IsActive { get; set; } = true;
 
         // Navigation
@@ -36,7 +37,6 @@ namespace HotelHup.CORE.Entities
             = new List<ReservationRoom>();
         public ICollection<HousekeepingTask> HousekeepingTasks { get; set; }
          = new List<HousekeepingTask>();
-
         public ICollection<MaintenanceTicket> MaintenanceTickets { get; set; }
             = new List<MaintenanceTicket>();
     }
