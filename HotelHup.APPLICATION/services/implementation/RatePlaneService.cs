@@ -38,15 +38,16 @@ namespace HotelHup.APPLICATION.services.implementation
             GetAllAsync(User actor,int propertyid,
             CancellationToken ct = default)
         {
+            var auth = await AuthorizeAsync(actor.Id, propertyid, ct);
+            if (!auth.Success)
+                return Fail<List<RatePlanResponse>>(auth.Message, auth.StatusCode);
             var property = await propertyRepository.GetByIdAsync(propertyid,ct);
             if (property == null)
             {
                 return Fail<List<RatePlanResponse>>(message:"this property is not found",status:404);
             }
             var plans = await _repository.GetAllAsync(property.ID,ct);
-            var auth = await AuthorizeAsync(actor.Id, propertyid, ct);
-            if (!auth.Success)
-                return Fail<List< RatePlanResponse>>(auth.Message, auth.StatusCode);
+         
             return Ok(plans.Select(x=> Map(x)).ToList());
         }
 
@@ -63,28 +64,42 @@ namespace HotelHup.APPLICATION.services.implementation
             return Ok(Map(plan));
         }
 
-        public async Task<ResponseStatus<RatePlanResponse>> 
-            CreateAsync(
-            User actor,
-            int propertyid,
-            int roomtypeid, 
-            CreateRatePlanRequest request,
-            CancellationToken ct = default)
-        {           
-           //must property is active
-           //must roomtype belong same propertyid
-           //must actor be admin or manager
-            var access = await ValidateTargetAsync(actor, propertyid, roomtypeid, ct);
+        public async Task<ResponseStatus<RatePlanResponse>>
+    CreateAsync(
+        User actor,
+        int propertyid,
+        int roomtypeid,
+        CreateRatePlanRequest request,
+        CancellationToken ct = default)
+        {
+            var access = await ValidateTargetAsync(
+                actor,
+                propertyid,
+                roomtypeid,
+                ct);
+
             if (access is not null)
             {
-                return Fail<RatePlanResponse>(access.Message, access.StatusCode);
+                return Fail<RatePlanResponse>(
+                    access.Message,
+                    access.StatusCode);
             }
 
-            var validation = ValidateVersionValues(request.Price, request.ValidFrom, request.ValidTo, request.Name);
+            var validation =
+                ValidateVersionValues(
+                    request.Price,
+                    request.ValidFrom,
+                    request.ValidTo,
+                    request.Name);
+
             if (validation.Count > 0)
             {
-                return Fail<RatePlanResponse>("Rate plan validation failed.", 400, validation);
+                return Fail<RatePlanResponse>(
+                    "Rate plan validation failed.",
+                    400,
+                    validation);
             }
+
             var plan = new RatePlan
             {
                 PropertyId = propertyid,
@@ -95,17 +110,50 @@ namespace HotelHup.APPLICATION.services.implementation
                 CreatedAt = DateTimeOffset.UtcNow,
                 CreatedBy = actor.Id
             };
-            var version = 
-                NewVersion
-                (plan, 1, request.Price, request.Rules, request.IsRefundable, request.ValidFrom, request.ValidTo, actor.Id);
+
+            var version = NewVersion(
+                plan,
+                1,
+                request.Price,
+                request.Rules,
+                request.IsRefundable,
+                request.ValidFrom,
+                request.ValidTo,
+                actor.Id);
+
             try
             {
-                await _repository.PersistAsync(plan, version, Audit(actor, plan, "Create", null, Map(version)), ct);
-                return new ResponseStatus<RatePlanResponse>(Map(plan, version), statusCode: 201);
+                var audit = Audit(
+                    actor,
+                    plan,
+                    "Create",
+                    null,
+                    Map(version));
+
+                await _repository.PersistAsync(
+                    plan,
+                    version,
+                    audit,
+                    ct);
+
+                return new ResponseStatus<RatePlanResponse>(
+                    Map(plan, version),
+                    statusCode: 201);
             }
-            catch (DbUpdateConcurrencyException) { return Fail<RatePlanResponse>("The rate plan could not be saved because of a concurrency conflict.", 409); }
-            catch (DbUpdateException) { return Fail<RatePlanResponse>("The rate plan could not be saved.", 409); }
+            catch (DbUpdateConcurrencyException)
+            {
+                return Fail<RatePlanResponse>(
+                    "The rate plan could not be saved because of a concurrency conflict.",
+                    409);
+            }
+            catch (DbUpdateException)
+            {
+                return Fail<RatePlanResponse>(
+                    "The rate plan could not be saved.",
+                    409);
+            }
         }
+
 
         public async Task<ResponseStatus<RatePlanResponse>> 
             UpdateAsync(
@@ -121,6 +169,12 @@ namespace HotelHup.APPLICATION.services.implementation
             {
                 return Fail<RatePlanResponse>("Rate plan was not found.", 404);
             }
+            if (!plan.IsActive)
+            {
+                return Fail<RatePlanResponse>(
+                    "Inactive rate plans cannot be updated.",
+                    400);
+            }
             //check actor must be manager or admin
             var auth = await AuthorizeAsync(actor.Id,plan.PropertyId, ct);
             if (!auth.Success)
@@ -128,6 +182,24 @@ namespace HotelHup.APPLICATION.services.implementation
                 return Fail<RatePlanResponse>
                     ("You are not authorized to create rate plane.", 403);
             }
+            var property =
+    await propertyRepository.GetByIdAsync(
+        plan.PropertyId,
+        ct);
+
+            if (property is null)
+            {
+                return Fail<RatePlanResponse>(
+                    "Property was not found.",
+                    404);
+            }
+            if (property.Status == PropertyStatus.Inactive)
+            {
+                return Fail<RatePlanResponse>(
+                    "Rate plans cannot be updated under an inactive property.",
+                    400);
+            }
+
             var validation = ValidateVersionValues(request.Price, request.ValidFrom, request.ValidTo, request.Name);
             if (validation.Count > 0)
             {
@@ -186,31 +258,101 @@ namespace HotelHup.APPLICATION.services.implementation
             return version is null ? Fail<RatePlanVersionResponse>("Rate plan version was not found.", 404) : Ok(Map(version));
         }
 
-        public async Task<ResponseStatus<RatePlanResponse>> DeactivateAsync(User actor, string expectedRowVersion, int id, CancellationToken ct = default)
+        public async Task<ResponseStatus<RatePlanResponse>>
+            DeactivateAsync(
+                User actor,
+                string expectedRowVersion,
+                int id,
+                CancellationToken ct = default)
         {
-            var plan = await _repository.GetByIdAsync(id, true, ct);
-            if (plan is null) return Fail<RatePlanResponse>("Rate plan was not found.", 404);
-            var property = await propertyRepository.GetByIdAsync(plan.PropertyId,ct);
-            if (property == null ||property.Status==PropertyStatus.Inactive)
-            {
-                return Fail<RatePlanResponse>(message: "this property is not found", status: 404);
-            }
-            var auth = await AuthorizeAsync(actor.Id, plan.PropertyId, ct);
-            if (!auth.Success)
-                return Fail<RatePlanResponse>(auth.Message, auth.StatusCode);
+            var plan =
+                await _repository.GetByIdAsync(
+                    id,
+                    true,
+                    ct);
 
-            if (!CheckRowVersion(expectedRowVersion, plan.RowVersion))
+            if (plan is null)
             {
-                return Fail<RatePlanResponse>("Concurrency conflict", 409);
+                return Fail<RatePlanResponse>(
+                    "Rate plan was not found.",
+                    404);
             }
+
+            var property =
+                await propertyRepository.GetByIdAsync(
+                    plan.PropertyId,
+                    ct);
+
+            if (property is null)
+            {
+                return Fail<RatePlanResponse>(
+                    "Property was not found.",
+                    404);
+            }
+
+            if (property.Status == PropertyStatus.Inactive)
+            {
+                return Fail<RatePlanResponse>(
+                    "Rate plans cannot be deactivated under an inactive property.",
+                    400);
+            }
+
+            var auth =
+                await AuthorizeAsync(
+                    actor.Id,
+                    plan.PropertyId,
+                    ct);
+
+            if (!auth.Success)
+            {
+                return Fail<RatePlanResponse>(
+                    auth.Message,
+                    auth.StatusCode);
+            }
+
+            if (!CheckRowVersion(
+                    expectedRowVersion,
+                    plan.RowVersion))
+            {
+                return Fail<RatePlanResponse>(
+                    "Concurrency conflict.",
+                    409);
+            }
+
+            if (!plan.IsActive)
+            {
+                return Fail<RatePlanResponse>(
+                    "Rate plan is already inactive.",
+                    400);
+            }
+
             var old = Map(plan);
-            plan.IsActive = false; plan.UpdatedAt = DateTimeOffset.UtcNow; plan.UpdatedBy = actor.Id;
+
+            plan.IsActive = false;
+            plan.UpdatedAt = DateTimeOffset.UtcNow;
+            plan.UpdatedBy = actor.Id;
+
             try
             {
-                await _repository.PersistAsync(plan, null, Audit(actor, plan, "Deactivate", old, Map(plan)), ct);
+                await _repository.PersistAsync(
+                    plan,
+                    null,
+                    Audit(
+                        actor,
+                        plan,
+                        "Deactivate",
+                        old,
+                        Map(plan)),
+                    ct);
+
                 return Ok(Map(plan));
             }
-            catch (DbUpdateConcurrencyException) { return Fail<RatePlanResponse>("The rate plan was changed by another user.", 409); }
+            catch (DbUpdateConcurrencyException)
+            {
+                return Fail<RatePlanResponse>(
+                    "The rate plan was changed by another user.",
+                    409);
+            }
         }
         //-------------------------------------------------------------------------------------------
         //private methods

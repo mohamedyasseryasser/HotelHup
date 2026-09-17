@@ -22,7 +22,7 @@ namespace HotelHup.API.Controllers
 
         [HttpGet]
         [Authorize(Policy = Permissions.RatePlans.Read)]
-        public async Task<IActionResult> List(int propertyid,CancellationToken ct)
+        public async Task<IActionResult> List([FromQuery]int propertyid,CancellationToken ct)
         { 
             var u = await Current();
             if (!u.Success || u.Data is null) 
@@ -42,10 +42,10 @@ namespace HotelHup.API.Controllers
         [Authorize(Policy = Permissions.RatePlans.Create)]
         public async Task<IActionResult> Create
             (
-            int propertyid,
-            int roomtypeid,
-            CreateRatePlanRequest request,
-            CancellationToken ct)
+         [FromQuery] int propertyid,
+    [FromQuery] int roomtypeid,
+    [FromBody] CreateRatePlanRequest request,
+    CancellationToken ct)
         {
             //modelstate validation
             var validationResult = ValidateModelState();
@@ -63,7 +63,12 @@ namespace HotelHup.API.Controllers
 
         [HttpPatch("{id:int}")]
         [Authorize(Policy = Permissions.RatePlans.Update)]
-        public async Task<IActionResult> Update(int id, [FromHeader(Name = "If-Match")] string ifMatch, UpdateRatePlanRequest request, CancellationToken ct)
+        public async Task<IActionResult> Update
+            (
+ int id,
+    [FromHeader(Name = "If-Match")] string? ifMatch,
+    [FromBody] UpdateRatePlanRequest request,
+    CancellationToken ct)
         {
             //modelstate validation
             var validationResult = ValidateModelState();
@@ -93,7 +98,11 @@ namespace HotelHup.API.Controllers
 
         [HttpPost("{id:int}/deactivate")]
         [Authorize(Policy = Permissions.RatePlans.Deactivate)]
-        public async Task<IActionResult> Deactivate(int id, [FromHeader(Name = "If-Match")] string ifMatch, CancellationToken ct) { var u = await Current(); if (!u.Success || u.Data is null) return Result(u); return Result(await _service.DeactivateAsync(u.Data, ifMatch, id, ct)); }
+        public async Task<IActionResult> Deactivate(
+  int id,
+    [FromHeader(Name = "If-Match")] string? ifMatch,
+    CancellationToken ct)
+        { var u = await Current(); if (!u.Success || u.Data is null) return Result(u); return Result(await _service.DeactivateAsync(u.Data, ifMatch, id, ct)); }
 
         private async Task<ResponseStatus<User>> Current()
         {
