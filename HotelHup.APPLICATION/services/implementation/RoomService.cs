@@ -231,7 +231,10 @@ namespace HotelHup.APPLICATION.services.implementation
        //-----------------------------------------------------------------------------------
         private async Task<ResponseStatus<bool>> AuthorizeAsync(User actor, int propertyId, CancellationToken ct)
         {
-            if (actor is null) return Fail<bool>("User is not authenticated.", 401);
+            if (actor is null)
+            {
+                return Fail<bool>("User is not authenticated.", 401);
+            }
             var roles = await _users.GetRolesAsync(actor.Id, ct);
             if (roles.Any(x => x.IsActive && string.Equals(x.Name, nameof(UserRole.Admin), StringComparison.OrdinalIgnoreCase))) 
                 return Ok(true);

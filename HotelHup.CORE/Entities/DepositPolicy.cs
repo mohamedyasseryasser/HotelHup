@@ -33,4 +33,7 @@ public class DepositPolicy : BaseEntity
 
     public ICollection<DepositPolicyVersion> Versions { get; set; }
         = new List<DepositPolicyVersion>();
+    public ICollection<ReservationDepositPolicySnapshot> reservationDepositPolicySnapshots { get; set; } =
+       new HashSet<ReservationDepositPolicySnapshot>();
+
 }

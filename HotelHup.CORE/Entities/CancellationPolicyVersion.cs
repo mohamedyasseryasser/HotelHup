@@ -12,6 +12,7 @@ public class CancellationPolicyVersion : BaseEntity
     [Key]
     public int Id { get; set; }
 
+    
     public int CancellationPolicyId { get; set; }
 
     public int Version { get; set; }
@@ -30,7 +31,9 @@ public class CancellationPolicyVersion : BaseEntity
     public decimal FixedCancellationFee { get; set; }
     public bool IsNonRefundable { get; set; }
     public int CutoffHours { get; set; }
-    public ICollection<Reservation> Reservations { get; set; }
-        = new List<Reservation>();
-    public CancellationPolicy CancellationPolicy { get; set; } = null!;
+    public ICollection<Reservation> Reservations { get; set; }= new List<Reservation>();
+    public CancellationPolicy? CancellationPolicy { get; set; } = null!;
+    public ICollection<ReservationCancellationPolicySnapshot> ReservationCancellationPolicySnapshots { get; set; }= 
+        new List<ReservationCancellationPolicySnapshot>();
+
 }

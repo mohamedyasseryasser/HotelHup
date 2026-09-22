@@ -19,6 +19,7 @@ public class Property : BaseEntity
 
     [Required]
     public PropertyStatus Status { get; set; } = PropertyStatus.Active;
+    public ICollection<RatePlan> RatePlans { get; set; }= new List<RatePlan>();
     public ICollection<Room> Rooms { get; set; } = new List<Room>();
     public ICollection<RoomType> RoomTypes { get; set; } = new List<RoomType>();
     public ICollection<Reservation> Reservations { get; set; } = new List<Reservation>();

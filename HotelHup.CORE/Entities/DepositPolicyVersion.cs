@@ -33,6 +33,10 @@ namespace HotelHup.CORE.Entities
         public bool IsActive { get; set; }
 
         // Navigation
+        public ICollection<Reservation> Reservations { get; set; } = new List<Reservation>();
+
         public DepositPolicy Deposit { get; set; } = null!;
+        public ICollection<ReservationDepositPolicySnapshot> reservationDepositPolicySnapshots { get; set; }=
+            new HashSet<ReservationDepositPolicySnapshot>();
     }
 }

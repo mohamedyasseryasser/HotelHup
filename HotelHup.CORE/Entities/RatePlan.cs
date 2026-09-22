@@ -46,8 +46,8 @@ namespace HotelHup.CORE.Entities
 
         public ICollection<RatePlanVersion> Versions { get; set; }
             = new List<RatePlanVersion>();
-
-        public ICollection<Reservation> Reservations { get; set; }
-            = new List<Reservation>();
+        public ICollection<ReservationRoom> Reservations { get; set; }= new List<ReservationRoom>();
+        public ICollection<ReservationRoomRatePlanSnapshot> reservationRoomRatePlanSnapshots { get; set; }
+            = new List<ReservationRoomRatePlanSnapshot>();
     }
 }

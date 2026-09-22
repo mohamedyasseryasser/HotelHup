@@ -27,9 +27,13 @@ namespace HotelHup.CORE.Entities
 
         public bool IsActive { get; set; } = true;
 
+
         // Navigation Property
 
         [ForeignKey(nameof(RatePlanId))]
         public RatePlan RatePlan { get; set; } = null!;
+        public ICollection<ReservationRoom> Reservations { get; set; }= new List<ReservationRoom>();
+        public ICollection<ReservationRoomRatePlanSnapshot> reservationRoomRatePlanSnapshots { get; set; }
+          = new List<ReservationRoomRatePlanSnapshot>();
     }
 }

@@ -22,8 +22,9 @@ public class CancellationPolicy : BaseEntity
 
     public Property Property { get; set; } = null!;
 
-    public ICollection<Reservation> Reservations { get; set; }
-        = new List<Reservation>();
+     //navigation 
     public ICollection<CancellationPolicyVersion> Versions { get; set; }
         = new List<CancellationPolicyVersion>();
+    public ICollection<ReservationCancellationPolicySnapshot> ReservationCancellationPolicySnapshots { get; set; } =
+        new List<ReservationCancellationPolicySnapshot>();
 }
