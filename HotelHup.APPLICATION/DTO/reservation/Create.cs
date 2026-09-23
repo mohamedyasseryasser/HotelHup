@@ -1,5 +1,6 @@
 ﻿using HotelHup.CORE.Enums;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace HotelHup.APPLICATION.DTO.reservation;
 
@@ -34,7 +35,7 @@ public sealed class CreateReservationRequest
 
     public BookingSource Source { get; init; } = BookingSource.Direct;
     // Preferred contract. The legacy property below remains supported for existing clients.
- //   public ICollection<CreateReservationRoomRequest> Rooms { get; init; } = new List<CreateReservationRoomRequest>();
+    //   public ICollection<CreateReservationRoomRequest> Rooms { get; init; } = new List<CreateReservationRoomRequest>();
     public ICollection<CreateReservationRoomRequest> createReservationRoomRequests { get; init; }
         = new List<CreateReservationRoomRequest>();
     public int? CancellationPolicyId { get; init; }
@@ -45,6 +46,10 @@ public sealed class CreateReservationRequest
 }
 public sealed class CreateReservationRoomRequest
 {
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal DiscountAmount { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal FeeAmount { get; set; }
     // Optional when the customer books by room type only.
     public int? RoomId { get; init; }
     // Required when RoomId is null.
@@ -65,7 +70,8 @@ public sealed class UpdateReservationRequest
     public int? RoomId { get; init; }
     public int? RoomTypeId { get; init; }
     public int? RatePlanId { get; init; }
-    public ICollection<UpdateReservationRoomRequest> Rooms { get; init; } = new List<UpdateReservationRoomRequest>();
+    public ICollection<UpdateReservationRoomRequest> Rooms { get; init; } 
+        = new List<UpdateReservationRoomRequest>();
     public byte[]? ExpectedRowVersion { get; init; }
 }
 
@@ -77,6 +83,8 @@ public sealed class UpdateReservationRoomRequest
     [Range(1, int.MaxValue)] public int? RatePlanId { get; init; }
     [Range(1, 20)] public int Adults { get; init; } = 1;
     [Range(0, 20)] public int Children { get; init; }
+    [Range(0, double.MaxValue)] public decimal DiscountAmount { get; init; }
+    [Range(0, double.MaxValue)] public decimal FeeAmount { get; init; }
 }
 
 public sealed class CancelReservationRequest
@@ -125,6 +133,8 @@ public sealed class CheckOutRequest
 
 public sealed class NoShowRequest
 {
+    public byte[]? ExpectedRowVersion { get; init; }
+
     [MaxLength(500)] public string? Reason { get; init; }
 }
 
@@ -151,6 +161,7 @@ public sealed class ReservationRoomResponse
     public int Nights { get; init; }
     public decimal NightlyRate { get; init; }
     public decimal BaseAmount { get; init; }
+    public decimal DiscountAmount { get; init; }
     public decimal TaxAmount { get; init; }
     public decimal FeeAmount { get; init; }
     public decimal TotalAmount { get; init; }

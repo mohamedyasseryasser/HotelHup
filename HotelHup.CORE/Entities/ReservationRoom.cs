@@ -41,9 +41,6 @@ namespace HotelHup.CORE.Entities
         public decimal DiscountAmount { get; set; }
 
         [Column(TypeName = "decimal(18,2)")]
-        public decimal TaxAmount { get; set; }
-
-        [Column(TypeName = "decimal(18,2)")]
         public decimal FeeAmount { get; set; }
 
         [Column(TypeName = "decimal(18,2)")]

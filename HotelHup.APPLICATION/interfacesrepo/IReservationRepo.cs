@@ -24,7 +24,9 @@ namespace HotelHup.APPLICATION.interfacesrepo
         Task<(IReadOnlyList<Reservation> Items, int TotalCount)> SearchAsync(int propertyId, ReservationSearchRequest request, CancellationToken ct = default);
         Task AddAsync(Reservation reservation, Folio folio, CancellationToken ct = default);
         Task SaveChangesAsync(CancellationToken ct = default);
+        Task<T> ExecuteSerializableAsync<T>(Func<Task<T>> operation, CancellationToken ct = default);
         Task PersistLifecycleAsync(Reservation reservation, IReadOnlyCollection<Room> rooms, IReadOnlyCollection<HousekeepingTask>? housekeepingTasks = null, CancellationToken ct = default);
     }
+
 
 }

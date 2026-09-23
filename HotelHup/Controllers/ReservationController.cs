@@ -77,18 +77,37 @@ public sealed class ReservationController : ControllerBase
 
     [HttpPut("reservations/{id:int}")]
     [Authorize(Policy = Permissions.Reservations.Update)]
-    public async Task<IActionResult> Update(int id, [FromQuery] int propertyId, [FromBody] UpdateReservationRequest request, CancellationToken ct)
+    public async Task<IActionResult> Update
+        (int id,
+        [FromQuery] int propertyId, 
+        [FromBody] UpdateReservationRequest request,
+        CancellationToken ct)
     {
-        var invalid = ValidateModelState(); if (invalid is not null) return invalid;
-        var actor = await GetActor(); if (!actor.Success || actor.Data is null) return Result(actor);
+        var invalid = ValidateModelState();
+        {
+            if (invalid is not null) return invalid;
+        }
+        var actor = await GetActor();
+        if (!actor.Success || actor.Data is null)
+        {
+            return Result(actor);
+        }
         return Result(await _service.UpdateAsync(actor.Data, propertyId, id, request, ct));
     }
 
     [HttpPost("reservations/{id:int}/confirm")]
     [Authorize(Policy = Permissions.Reservations.Modify)]
-    public async Task<IActionResult> Confirm(int id, [FromQuery] int propertyId, [FromBody] ConfirmReservationRequest? request, CancellationToken ct)
+    public async Task<IActionResult> 
+        Confirm(int id,
+        [FromQuery] int propertyId, 
+        [FromBody] ConfirmReservationRequest? request,
+        CancellationToken ct)
     {
-        var actor = await GetActor(); if (!actor.Success || actor.Data is null) return Result(actor);
+        var actor = await GetActor();
+        if (!actor.Success || actor.Data is null)
+        {
+            return Result(actor);
+        }
         return Result(await _service.ConfirmAsync(actor.Data, propertyId, id, request ?? new(), ct));
     }
 

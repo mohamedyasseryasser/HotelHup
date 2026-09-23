@@ -42,13 +42,13 @@ namespace HotelHup.CORE.Entities
         public decimal BaseAmount { get; set; }
 
         [Column(TypeName = "decimal(18,2)")]
-        public decimal DiscountAmount { get; set; }
+        public decimal TotalDiscountAmount { get; set; }
 
         [Column(TypeName = "decimal(18,2)")]
-        public decimal TaxAmount { get; set; }
+        public decimal TotalTaxAmount { get; set; }
 
         [Column(TypeName = "decimal(18,2)")]
-        public decimal FeeAmount { get; set; }
+        public decimal TotalFeeAmount { get; set; }
 
         [Column(TypeName = "decimal(18,2)")]
         public decimal TotalAmount { get; set; }
@@ -56,7 +56,9 @@ namespace HotelHup.CORE.Entities
 
         public int? CancellationPolicyVersionId { get; set; }
 
-       
+        [Timestamp]
+        public byte[] RowVersion { get; set; }
+           = Array.Empty<byte>();
 
         public int? DepositPolicyId { get; set; }
 
