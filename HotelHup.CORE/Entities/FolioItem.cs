@@ -3,23 +3,17 @@ using System.ComponentModel.DataAnnotations;
 
 namespace HotelHup.CORE.Entities
 {
-    public class FolioItem:BaseEntity
+    public class FolioItem : BaseEntity
     {
-        [Key,Required]
-        public int id {  get; set; }
+        [Key, Required]
+        public int id { get; set; }
         public int FolioId { get; set; }
-
         public int? ServiceId { get; set; }
-
- 
+        public string? ServiceNameSnapshot { get; set; }
         public FolioItemType Type { get; set; }
-
         public string? Description { get; set; }
-
         public decimal Amount { get; set; }
-
         public decimal Tax { get; set; }
-
         public FolioItemSource Source { get; set; }
 
         public string? SourceReference { get; set; }
@@ -34,5 +28,5 @@ namespace HotelHup.CORE.Entities
 
         public Service? Service { get; set; }
 
-     }
+    }
 }

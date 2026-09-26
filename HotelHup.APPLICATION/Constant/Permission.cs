@@ -100,6 +100,7 @@ namespace HotelHup.APPLICATION.Constant
             public const string AddCharge = "Folio.AddCharge";
             public const string Transfer = "Folio.Transfer";
             public const string Close = "Folio.Close";
+            public const string Reopen = "Folio.Reopen";
         }
  
         public static class Payments

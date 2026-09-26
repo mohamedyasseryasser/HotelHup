@@ -21,6 +21,9 @@ namespace HotelHup.CORE.Entities
 
         public DateTimeOffset? ClosedAt { get; set; }
 
+        [Timestamp]
+        public byte[] RowVersion { get; set; }
+           = Array.Empty<byte>();
         public string? ClosedBy { get; set; }
 
         // Navigation Properties
