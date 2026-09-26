@@ -34,9 +34,7 @@ public sealed class CreateReservationRequest
     [Required] public DateTime CheckOutDate { get; init; }
 
     public BookingSource Source { get; init; } = BookingSource.Direct;
-    // Preferred contract. The legacy property below remains supported for existing clients.
-    //   public ICollection<CreateReservationRoomRequest> Rooms { get; init; } = new List<CreateReservationRoomRequest>();
-    public ICollection<CreateReservationRoomRequest> createReservationRoomRequests { get; init; }
+      public ICollection<CreateReservationRoomRequest> createReservationRoomRequests { get; init; }
         = new List<CreateReservationRoomRequest>();
     public int? CancellationPolicyId { get; init; }
     public int? CancellationPolicyVersionId { get; init; }
@@ -70,7 +68,7 @@ public sealed class UpdateReservationRequest
     public int? RoomId { get; init; }
     public int? RoomTypeId { get; init; }
     public int? RatePlanId { get; init; }
-    public ICollection<UpdateReservationRoomRequest> Rooms { get; init; } 
+    public ICollection<UpdateReservationRoomRequest> Rooms { get; init; }
         = new List<UpdateReservationRoomRequest>();
     public byte[]? ExpectedRowVersion { get; init; }
 }
@@ -89,6 +87,8 @@ public sealed class UpdateReservationRoomRequest
 
 public sealed class CancelReservationRequest
 {
+    [Required]
+    public bool OverridePolicy { get; init; }
     [Required, MinLength(2), MaxLength(500)] public string Reason { get; init; } = string.Empty;
     public byte[]? ExpectedRowVersion { get; init; }
 }
@@ -101,17 +101,15 @@ public sealed class ConfirmReservationRequest
 
 public sealed class AssignRoomRequest
 {
-    // RoomId is kept for backward compatibility; Rooms is used for multi-room assignment.
-    [Range(1, int.MaxValue)] public int RoomId { get; init; }
+
     public ICollection<AssignRoomItemRequest> Rooms { get; init; } = new List<AssignRoomItemRequest>();
-    public int? RatePlanId { get; init; }
     [MaxLength(500)] public string? Reason { get; init; }
 }
 
 public sealed class AssignRoomItemRequest
 {
     [Range(1, int.MaxValue)] public int RoomId { get; init; }
-    public int? RatePlanId { get; init; }
+    [Range(1, int.MaxValue)] public int RatePlanId { get; init; }
     [Range(1, 20)] public int? Adults { get; init; }
     [Range(0, 20)] public int? Children { get; init; }
 }
@@ -129,6 +127,7 @@ public sealed class CheckInRequest
 public sealed class CheckOutRequest
 {
     [MaxLength(1000)] public string? Notes { get; init; }
+    public bool ManagerOverride { get; init; }
 }
 
 public sealed class NoShowRequest
@@ -136,6 +135,8 @@ public sealed class NoShowRequest
     public byte[]? ExpectedRowVersion { get; init; }
 
     [MaxLength(500)] public string? Reason { get; init; }
+    [Required]
+    public bool OverridePolicy { get; init; }
 }
 
 public sealed class ReservationSearchRequest
@@ -206,10 +207,33 @@ public sealed class PagedReservationResponse
 public sealed class ReservationActionResponse
 {
     public int Id { get; init; }
+
     public ReservationStatus Status { get; init; }
+
     public string RowVersion { get; init; } = string.Empty;
-    public IReadOnlyList<int> RoomIds { get; init; } = Array.Empty<int>();
+
+    public IReadOnlyList<int> RoomIds { get; init; } =
+        Array.Empty<int>();
+
+    public decimal CancellationFee { get; init; }
+
+    public decimal RefundableAmount { get; init; }
+
+    public decimal HeldAmount { get; init; }
+
+    public decimal PaidAmount { get; init; }
+
+    public decimal OutstandingCancellationFee { get; init; }
+
+    public decimal Balance { get; init; }
+
+    public decimal CreditBalance { get; init; }
+
+    public decimal NoShowCharge { get; init; }
+
+    public string? Reason { get; init; }
 }
+
 
 public sealed class ReservationStatusHistoryResponse
 {

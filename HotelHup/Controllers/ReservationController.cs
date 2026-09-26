@@ -113,7 +113,10 @@ public sealed class ReservationController : ControllerBase
 
     [HttpPost("reservations/{id:int}/cancel")]
     [Authorize(Policy = Permissions.Reservations.Cancel)]
-    public async Task<IActionResult> Cancel(int id, [FromQuery] int propertyId, [FromBody] CancelReservationRequest request, CancellationToken ct)
+    public async Task<IActionResult> Cancel(int id, 
+        [FromQuery] int propertyId, 
+        [FromBody] CancelReservationRequest request,
+        CancellationToken ct)
     {
         var invalid = ValidateModelState(); if (invalid is not null) return invalid;
         var actor = await GetActor(); if (!actor.Success || actor.Data is null) return Result(actor);
@@ -122,7 +125,10 @@ public sealed class ReservationController : ControllerBase
 
     [HttpPost("reservations/{id:int}/no-show")]
     [Authorize(Policy = Permissions.Reservations.Modify)]
-    public async Task<IActionResult> NoShow(int id, [FromQuery] int propertyId, [FromBody] NoShowRequest? request, CancellationToken ct)
+    public async Task<IActionResult> NoShow(int id,
+        [FromQuery] int propertyId,
+        [FromBody] NoShowRequest? request,
+        CancellationToken ct)
     {
         var actor = await GetActor(); if (!actor.Success || actor.Data is null) return Result(actor);
         return Result(await _service.NoShowAsync(actor.Data, propertyId, id, request ?? new(), ct));
@@ -130,7 +136,10 @@ public sealed class ReservationController : ControllerBase
 
     [HttpPost("reservations/{id:int}/rooms")]
     [Authorize(Policy = Permissions.Reservations.Modify)]
-    public async Task<IActionResult> AssignRoom(int id, [FromQuery] int propertyId, [FromBody] AssignRoomRequest request, CancellationToken ct)
+    public async Task<IActionResult> AssignRoom(int id, 
+        [FromQuery] int propertyId, 
+        [FromBody] AssignRoomRequest request,
+        CancellationToken ct)
     {
         var invalid = ValidateModelState(); if (invalid is not null) return invalid;
         var actor = await GetActor(); if (!actor.Success || actor.Data is null) return Result(actor);
@@ -139,18 +148,37 @@ public sealed class ReservationController : ControllerBase
 
     [HttpDelete("reservations/{id:int}/rooms/{reservationRoomId:int}")]
     [Authorize(Policy = Permissions.Reservations.Modify)]
-    public async Task<IActionResult> ReleaseRoom(int id, int reservationRoomId, [FromQuery] int propertyId, CancellationToken ct)
+    public async Task<IActionResult> ReleaseRoom(
+        int id,
+        int reservationRoomId, 
+        [FromQuery] int propertyId,
+        CancellationToken ct)
     {
-        var actor = await GetActor(); if (!actor.Success || actor.Data is null) return Result(actor);
+        var actor = await GetActor();
+        if (!actor.Success || actor.Data is null)
+        {
+            return Result(actor);
+        }
         return Result(await _service.ReleaseRoomAsync(actor.Data, propertyId, id, reservationRoomId, ct));
     }
 
     [HttpPost("reservations/{id:int}/check-in")]
     [Authorize(Policy = Permissions.Reservations.Modify)]
-    public async Task<IActionResult> CheckIn(int id, [FromQuery] int propertyId, [FromBody] CheckInRequest request, CancellationToken ct)
+    public async Task<IActionResult> CheckIn(
+        int id,
+        [FromQuery] int propertyId,
+        [FromBody] CheckInRequest request,
+        CancellationToken ct)
     {
-        var invalid = ValidateModelState(); if (invalid is not null) return invalid;
-        var actor = await GetActor(); if (!actor.Success || actor.Data is null) return Result(actor);
+        var invalid = ValidateModelState();
+        {
+            if (invalid is not null) return invalid;
+        } 
+        var actor = await GetActor();
+        if (!actor.Success || actor.Data is null)
+        {
+            return Result(actor);
+        }
         return Result(await _service.CheckInAsync(actor.Data, propertyId, id, request, ct));
     }
 

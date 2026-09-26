@@ -305,13 +305,13 @@ namespace HotelHup.INFRASTRUCTURE.Context
                 entity.Property(x => x.BaseAmount)
                     .HasPrecision(18, 2);
 
-                entity.Property(x => x.DiscountAmount)
+                entity.Property(x => x.TotalDiscountAmount)
                     .HasPrecision(18, 2);
 
-                entity.Property(x => x.TaxAmount)
+                entity.Property(x => x.TotalTaxAmount)
                     .HasPrecision(18, 2);
 
-                entity.Property(x => x.FeeAmount)
+                entity.Property(x => x.TotalFeeAmount)
                     .HasPrecision(18, 2);
 
                 entity.Property(x => x.TotalAmount)
@@ -620,8 +620,7 @@ namespace HotelHup.INFRASTRUCTURE.Context
                 entity.Property(x => x.DiscountAmount)
                     .HasPrecision(18, 2);
 
-                entity.Property(x => x.TaxAmount)
-                    .HasPrecision(18, 2);
+ 
 
                 entity.Property(x => x.FeeAmount)
                     .HasPrecision(18, 2);

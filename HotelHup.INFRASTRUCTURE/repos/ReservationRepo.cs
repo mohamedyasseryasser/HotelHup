@@ -21,13 +21,20 @@ public sealed class ReservationRepository : IReservationRepository
 
     public Task<Room?> GetRoomAsync(int propertyId, int roomId, bool tracking, CancellationToken ct = default)
     {
-        IQueryable<Room> query = _context.Rooms.Include(x => x.RoomType)
+        IQueryable<Room> query = _context.Rooms
+            .Include(x => x.RoomType)
+                .ThenInclude(x => x!.RatePlans)
             .Where(x => x.property_id == propertyId && x.Id == roomId);
         if (!tracking) query = query.AsNoTracking();
         return query.SingleOrDefaultAsync(ct);
     }
 
-    public async Task<RatePlan?> GetRatePlanAsync(int propertyId, int roomTypeId, int? ratePlanId, DateTime stayDate, CancellationToken ct = default)
+    public async Task<RatePlan?> GetRatePlanAsync(
+        int propertyId,
+        int roomTypeId,
+        int? ratePlanId,
+        DateTime stayDate,
+        CancellationToken ct = default)
     {
         var query = _context.RatePlans.AsNoTracking().Include(x => x.Versions)
             .Where(x => x.PropertyId == propertyId && x.RoomTypeId == roomTypeId && x.IsActive &&
@@ -101,7 +108,8 @@ public sealed class ReservationRepository : IReservationRepository
             .Include(x => x.ReservationRooms).ThenInclude(x => x.Room)
             .Include(x => x.ReservationRooms).ThenInclude(x => x.RatePlanSnapshot)
             .Include(x => x.StatusHistory)
-            .Include(x => x.Folio)
+            .Include(x => x.Folio).ThenInclude(x => x!.Items)
+            .Include(x => x.Folio).ThenInclude(x => x!.Payments).ThenInclude(x => x.Refunds)
             .Include(x => x.CancellationPolicySnapshot)
             .Include(x => x.DepositPolicySnapshot)
             .Where(x => x.PropertyId == propertyId && x.Id == id);
@@ -174,7 +182,8 @@ public sealed class ReservationRepository : IReservationRepository
         }
     }
 
-    public async Task PersistLifecycleAsync(Reservation reservation, IReadOnlyCollection<Room> rooms, IReadOnlyCollection<HousekeepingTask>? housekeepingTasks = null, CancellationToken ct = default)
+    public async Task PersistLifecycleAsync(Reservation reservation,
+        IReadOnlyCollection<Room> rooms, IReadOnlyCollection<HousekeepingTask>? housekeepingTasks = null, CancellationToken ct = default)
     {
         await using var tx = await _context.Database.BeginTransactionAsync(ct);
         try
@@ -191,4 +200,30 @@ public sealed class ReservationRepository : IReservationRepository
             throw;
         }
     }
+    public async Task PersistTransitionAsync(
+    Reservation reservation,
+    AuditLog audit,
+    CancellationToken ct = default)
+    {
+        await using var tx =
+            await _context.Database.BeginTransactionAsync(ct);
+
+        try
+        {
+            _context.Entry(reservation).State =
+                EntityState.Modified;
+
+            _context.AuditLogs.Add(audit);
+
+            await _context.SaveChangesAsync(ct);
+
+            await tx.CommitAsync(ct);
+        }
+        catch
+        {
+            await tx.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
 }

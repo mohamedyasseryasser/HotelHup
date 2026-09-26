@@ -16,7 +16,7 @@ namespace HotelHup.CORE.Entities
         public decimal Total { get; set; }
 
         public decimal Balance { get; set; }
-
+        public decimal CreditBalance { get; set; }
         // Closing
 
         public DateTimeOffset? ClosedAt { get; set; }
