@@ -450,57 +450,89 @@ public sealed class ReservationService : IReservationService
     }
 
     public Task<ResponseStatus<ReservationActionResponse>>
-        ConfirmAsync(User actor,
-        int propertyId,
-        int id,
-        ConfirmReservationRequest request,
-        CancellationToken ct = default)
+        ConfirmAsync(
+            User actor,
+            int propertyId,
+            int id,
+            ConfirmReservationRequest request,
+            CancellationToken ct = default)
     {
-        return  TransitionAsync(actor,
-            propertyId,
-            id,
-            ReservationStatus.Confirmed, 
-            request.Reason ?? "Reservation confirmed",
-            request.ExpectedRowVersion,
-            false, 
-            false,
+        return _repository.ExecuteSerializableAsync(
+            () => TransitionAsync(
+                actor,
+                propertyId,
+                id,
+                ReservationStatus.Confirmed,
+                request.Reason ?? "Reservation confirmed",
+                request.ExpectedRowVersion,
+                false,
+                false,
+                ct),
             ct);
     }
+
     public Task<ResponseStatus<ReservationActionResponse>>
-        CancelAsync(User actor,
-        int propertyId,
-        int id,
-        CancelReservationRequest request,
-        CancellationToken ct = default) =>
-        TransitionAsync(actor,
-            propertyId,
-            id,
-            ReservationStatus.Cancelled,
-            request.Reason,
-            request.ExpectedRowVersion,
-            request.OverridePolicy,
-            false,
-            ct);
+       CancelAsync(
+           User actor,
+           int propertyId,
+           int id,
+           CancelReservationRequest request,
+           CancellationToken ct = default)
+       =>
+       _repository.ExecuteSerializableAsync(
+           () => TransitionAsync(
+               actor,
+               propertyId,
+               id,
+               ReservationStatus.Cancelled,
+               request.Reason,
+               request.ExpectedRowVersion,
+               request.OverridePolicy,
+               false,
+               ct),
+           ct);
 
-    public Task<ResponseStatus<ReservationActionResponse>> 
-        NoShowAsync(User actor,
+
+    public Task<ResponseStatus<ReservationActionResponse>>
+     NoShowAsync(
+         User actor,
+         int propertyId,
+         int id,
+         NoShowRequest request,
+         CancellationToken ct = default)
+     =>
+     _repository.ExecuteSerializableAsync(
+         () => TransitionAsync(
+             actor,
+             propertyId,
+             id,
+             ReservationStatus.NoShow,
+             request.Reason ?? "No-show recorded",
+             request.ExpectedRowVersion,
+             request.OverridePolicy,
+             true,
+             ct),
+         ct);
+    public Task<ResponseStatus<ReservationActionResponse>>
+    AssignRoomAsync(
+        User actor,
         int propertyId,
         int id,
-        NoShowRequest request,
+        AssignRoomRequest request,
         CancellationToken ct = default)
-        =>
-        TransitionAsync(actor, 
+    =>
+    _repository.ExecuteSerializableAsync(
+        () => AssignRoomCoreAsync(
+            actor,
             propertyId,
             id,
-            ReservationStatus.NoShow, 
-            request.Reason ?? "No-show recorded",
-            request.ExpectedRowVersion,
-            request.OverridePolicy,
-            true,
-            ct);
+            request,
+            ct),
+        ct);
 
-    public async Task<ResponseStatus<ReservationActionResponse>> 
-        AssignRoomAsync(User actor,
+
+    public async Task<ResponseStatus<ReservationActionResponse>>
+        AssignRoomCoreAsync(User actor,
         int propertyId,
         int id,
         AssignRoomRequest request,
