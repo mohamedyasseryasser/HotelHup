@@ -21,7 +21,7 @@ namespace HotelHup.CORE.Entities
         public decimal Amount { get; set; }
 
         public string? ExternalId { get; set; }
-
+                                    
         public string? IdempotencyKey { get; set; }
 
         public DateTime? PaidAt { get; set; }

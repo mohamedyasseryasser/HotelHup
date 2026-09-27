@@ -103,7 +103,7 @@ public sealed class ReservationRepository : IReservationRepository
 
     public async Task<Reservation?> GetByIdAsync(int propertyId, int id, bool tracking, CancellationToken ct = default)
     {
-        IQueryable<Reservation> query = _context.Reservations
+        IQueryable<Reservation> query = _context.Reservations.Include(r=>r.Property).ThenInclude(p=>p.Settings)
             .Include(x => x.Guest)
             .Include(x => x.ReservationRooms).ThenInclude(x => x.Room)
             .Include(x => x.ReservationRooms).ThenInclude(x => x.RatePlanSnapshot)

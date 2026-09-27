@@ -820,7 +820,10 @@ public sealed class ReservationService : IReservationService
         {
             return Fail<ReservationActionResponse>("Only checked-in reservations can check out.", "INVALID_STATE_TRANSITION", 409);
         }
-        if (reservation.Folio is not null)
+        var requireFullPayment =
+   reservation.Property.Settings?.RequireFullPaymentBeforeCheckOut == true;
+
+        if (reservation.Folio is not null && requireFullPayment)
         {
             ReconcileFolio(reservation.Folio);
             var roles = await user.GetRolesAsync(actor.Id, ct);
@@ -843,13 +846,17 @@ public sealed class ReservationService : IReservationService
                 return Fail<ReservationActionResponse>("The folio balance must be settled before check-out.", "BALANCE_NOT_SETTLED", 409);
             }
         }
+        var requireInspection =
+    reservation.Property.Settings?.RequireInspectionBeforeAvailable == true;
         var rooms = new List<Room>();
         foreach (var assignment in reservation.ReservationRooms.Where(x => x.IsCurrent))
         { 
             var room = await _repository.GetRoomAsync(propertyId, assignment.RoomId, true, ct);
             if (room is not null) 
-            { 
-                room.Status = RoomStatus.Dirty;
+            {
+                room.Status = requireInspection
+                            ? RoomStatus.Dirty
+                            : RoomStatus.Available; 
                 rooms.Add(room); 
                 assignment.IsCurrent = false;
                 assignment.ReleasedAt = DateTimeOffset.UtcNow; 
@@ -945,12 +952,15 @@ public sealed class ReservationService : IReservationService
         if (target == ReservationStatus.Confirmed)
         {
             if (reservation.CancellationPolicyId.HasValue && reservation.CancellationPolicySnapshot is null)
+            {
                 return Fail<ReservationActionResponse>("Cancellation policy snapshot is required.", "POLICY_SNAPSHOT_REQUIRED", 409);
+            } 
             var requiredDeposit = reservation.DepositPolicySnapshot?.RequiredDepositAmount ?? 0m;
             var paidDeposit = reservation.Folio?.Payments.Where(x => x.Status is PaymentStatus.Paid or PaymentStatus.PartiallyPaid).Sum(x => x.Amount) ?? 0m;
             if (property.Settings?.RequireDepositForReservation == true && requiredDeposit > paidDeposit)
+            {
                 return Fail<ReservationActionResponse>("The required deposit has not been paid.", "DEPOSIT_REQUIRED", 409);
-
+            }
             foreach (var assignment in reservation.ReservationRooms.Where(x => x.IsCurrent))
             {
                 var available = await _repository.GetAvailableRoomsAsync(propertyId, reservation.CheckInDate, reservation.CheckOutDate, assignment.Adults, assignment.Children, assignment.Room?.RoomTypeId, id, ct);
