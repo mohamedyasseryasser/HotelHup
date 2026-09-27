@@ -23,7 +23,11 @@ namespace HotelHup.INFRASTRUCTURE.repos
                 .Include(x => x.Items.OrderByDescending(i => i.PostedAt))
                 .Include(x => x.Payments).ThenInclude(x => x.Refunds)
                 .Where(x => x.id == id);
-            if (!tracking) query = query.AsNoTracking();
+            if (!tracking)
+            {
+                query = query.AsNoTracking();
+            }
+
             return await query.SingleOrDefaultAsync(ct);
         }
         public Task<Service?> GetServiceAsync(
@@ -60,7 +64,7 @@ namespace HotelHup.INFRASTRUCTURE.repos
             // Folio is loaded as a tracked aggregate for write operations; keep
             // already-posted financial rows unchanged and let EF detect only the
             // intended state change/new item.
-            _context.AuditLogs.Add(audit);
+          await  _context.AuditLogs.AddAsync(audit);
             await _context.SaveChangesAsync(ct);
         }
 
