@@ -42,34 +42,65 @@ namespace HotelHup.API.Controllers
 
         [HttpGet("{id:int}")]
         [Authorize(Policy = Permissions.Payments.Read)]
-        public async Task<IActionResult> Get(int id, CancellationToken ct)
+        public async Task<IActionResult>
+            Get(
+            int id,
+            CancellationToken ct)
         {
-            var actor = await Actor(); if (!actor.Success || actor.Data is null) return Result(actor);
+            var actor = await Actor();
+            if (!actor.Success || actor.Data is null)
+            {
+                return Result(actor);
+            }
             return Result(await _service.GetPaymentByIdAsync(actor.Data, id, ct));
         }
 
         [HttpGet("folios/{folioId:int}")]
         [Authorize(Policy = Permissions.Payments.Read)]
-        public async Task<IActionResult> GetByFolio(int folioId, CancellationToken ct)
+        public async Task<IActionResult>
+            GetByFolio(
+            int folioId, 
+            CancellationToken ct)
         {
-            var actor = await Actor(); if (!actor.Success || actor.Data is null) return Result(actor);
+            var actor = await Actor();
+            if (!actor.Success || actor.Data is null)
+            {
+                return Result(actor);
+            }
             return Result(await _service.GetPaymentsByFolioAsync(actor.Data, folioId, ct));
         }
 
         [HttpGet("folios/{folioId:int}/summary")]
         [Authorize(Policy = Permissions.Payments.Read)]
-        public async Task<IActionResult> Summary(int folioId, CancellationToken ct)
+        public async Task<IActionResult> 
+            Summary(
+            int folioId,
+            CancellationToken ct)
         {
-            var actor = await Actor(); if (!actor.Success || actor.Data is null) return Result(actor);
+            var actor = await Actor();
+            if (!actor.Success || actor.Data is null)
+            {
+                return Result(actor);
+            }
             return Result(await _service.GetSummaryAsync(actor.Data, folioId, ct));
         }
 
         [HttpPost("{id:int}/refunds")]
         [Authorize(Policy = Permissions.Refunds.Create)]
-        public async Task<IActionResult> Refund(int id, [FromBody] RefundPaymentRequest request, CancellationToken ct)
+        public async Task<IActionResult> 
+            Refund(
+            int id,
+            [FromBody] RefundPaymentRequest request,
+            CancellationToken ct)
         {
-            if (!ModelState.IsValid) return ValidationError();
-            var actor = await Actor(); if (!actor.Success || actor.Data is null) return Result(actor);
+            if (!ModelState.IsValid)
+            {
+                return ValidationError();
+            }
+            var actor = await Actor();
+            {
+                if (!actor.Success || actor.Data is null) return Result(actor);
+            }
             return Result(await _service.RefundPaymentAsync(actor.Data, id, request, ct));
         }
 

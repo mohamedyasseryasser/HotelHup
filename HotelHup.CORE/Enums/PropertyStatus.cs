@@ -120,6 +120,7 @@ namespace HotelHup.CORE.Enums
         PartiallyPaid,
         Paid,
         Refunded,
+        PartiallyRefunded,
         Failed,
         Voided
     }

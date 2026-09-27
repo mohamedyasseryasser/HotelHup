@@ -4,6 +4,7 @@ using HotelHup.INFRASTRUCTURE.Context;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -16,7 +17,7 @@ namespace HotelHup.INFRASTRUCTURE.repos
         private readonly hotelhupContext _context;
         public PaymentRepository(hotelhupContext context) => _context = context;
 
-        public Task<Payment?> GetByIdAsync(int id, bool tracking, CancellationToken ct = default)
+        public async Task<Payment?> GetByIdAsync(int id, bool tracking, CancellationToken ct = default)
         {
             IQueryable<Payment> query = _context.Payments
                 .Include(x => x.Refunds)
@@ -24,7 +25,7 @@ namespace HotelHup.INFRASTRUCTURE.repos
                 .Include(x => x.Folio).ThenInclude(x => x.Items)
                 .Include(x => x.Folio).ThenInclude(x => x.Payments).ThenInclude(x => x.Refunds)
                 .Where(x => x.Id == id);
-            return (tracking ? query : query.AsNoTracking()).SingleOrDefaultAsync(ct);
+            return  await (tracking ? query : query.AsNoTracking()).SingleOrDefaultAsync(ct);
         }
 
         public async Task<IReadOnlyList<Payment>> GetByFolioIdAsync(int folioId, CancellationToken ct = default) =>
@@ -58,16 +59,16 @@ namespace HotelHup.INFRASTRUCTURE.repos
         public async Task<T> ExecuteTransactionAsync<T>(Func<Task<T>> operation, CancellationToken ct = default)
         {
             if (_context.Database.CurrentTransaction is not null) return await operation();
-            await using var transaction = await _context.Database.BeginTransactionAsync(ct);
+            await using var tx = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
             try
             {
                 var result = await operation();
-                await transaction.CommitAsync(ct);
+                await tx.CommitAsync(ct);
                 return result;
             }
             catch
             {
-                await transaction.RollbackAsync(CancellationToken.None);
+                await tx.RollbackAsync(CancellationToken.None);
                 throw;
             }
         }
