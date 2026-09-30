@@ -200,12 +200,14 @@ namespace HotelHup.APPLICATION.services.implementation
             var created = await _repo.CreateAsync(
          property,
          settings,
-         Audit(
-             "Property",
-             "Create",
-             null,
-             new { property.Name, property.Code },
-             null),
+       Audit(
+    "Property",
+    "Create",
+    null,
+    new { property.Name, property.Code },
+    null,
+    actorid: actorId),
+
         ct);
 
             return Created(ToResponse(created));
@@ -303,14 +305,21 @@ namespace HotelHup.APPLICATION.services.implementation
 
             var updated = await _repo.UpdateAsync(
                 property,
-           Audit(
-         "Property",
-         "Update",
-         id.ToString(),
-         old,
-         new { property.Name, property.Code, property.Description },
-         r.Reason,
-         id),
+         Audit(
+    "Property",
+    "Update",
+    id.ToString(),
+    old,
+    new
+    {
+        property.Name,
+        property.Code,
+        property.Description
+    },
+    r.Reason,
+    propertyId: property.ID,
+    actorid: CurrentUserLogin.Id)
+,
      ct);
 
             if (!updated)
@@ -698,7 +707,7 @@ namespace HotelHup.APPLICATION.services.implementation
                     {
                         Status = status
                     },
-                    reason),
+                    reason,id,actor.Id),
                 ct);
 
             try
