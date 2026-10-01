@@ -139,18 +139,17 @@ namespace HotelHup.APPLICATION.Constant
             public const string Complete = "Housekeeping.Complete";
             public const string ReportIssue = "Housekeeping.ReportIssue";
         }
- 
 
-        public static class Maintenance
+
+        public static class Expenses
         {
-            public const string Read = "Maintenance.Read";
-            public const string Create = "Maintenance.Create";
-            public const string Update = "Maintenance.Update";
-            public const string Assign = "Maintenance.Assign";
-            public const string Complete = "Maintenance.Complete";
+            public const string Read = "Expense.Read";
+            public const string Create = "Expense.Create";
+            public const string Update = "Expense.Update";
+            public const string Void = "Expense.Void";
         }
 
- 
+
 
         public static class Reports
         {

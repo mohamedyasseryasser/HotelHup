@@ -54,7 +54,7 @@ namespace HotelHup.INFRASTRUCTURE.Context
 
         public DbSet<HousekeepingTask> HousekeepingTasks => Set<HousekeepingTask>();
 
-        public DbSet<MaintenanceTicket> MaintenanceTickets => Set<MaintenanceTicket>();
+        public DbSet<Expense> Expenses => Set<Expense>();
 
         public DbSet<Permission> Permissions => Set<Permission>();
 
@@ -938,23 +938,7 @@ namespace HotelHup.INFRASTRUCTURE.Context
                     .OnDelete(DeleteBehavior.SetNull);
             });
 
-            //maintenanceticket
-            builder.Entity<MaintenanceTicket>(entity =>
-            {
-                entity.Property(x => x.Issue)
-                    .HasMaxLength(1000)
-                    .IsRequired();
-
-                entity.HasOne(x => x.Room)
-                    .WithMany(x => x.MaintenanceTickets)
-                    .HasForeignKey(x => x.RoomId)
-                    .OnDelete(DeleteBehavior.Restrict);
-
-                entity.HasOne(x => x.Assignee)
-                    .WithMany()
-                    .HasForeignKey(x => x.AssigneeId)
-                    .OnDelete(DeleteBehavior.SetNull);
-            });
+ 
 
             //auditlog
             builder.Entity<AuditLog>(entity =>

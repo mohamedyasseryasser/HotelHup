@@ -11,6 +11,12 @@ namespace HotelHup.CORE.Enums
         Active,
         Inactive
     }
+    public enum ExpenseStatus
+    {
+        Posted,
+        Voided
+    }
+
     public enum PropertySortBy
     {
         Name,
