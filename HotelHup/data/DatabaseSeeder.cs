@@ -97,59 +97,147 @@ public static class DatabaseSeeder
         hotelhupContext context,
         CancellationToken cancellationToken)
     {
-        var roleNames = new[]
+        // The requirements define seven least-privilege roles. Admin is the
+        // only role that receives every permission; all other roles are
+        // synchronized to the explicit matrix below on every seed run.
+        var roleDescriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            UserRole.Admin.ToString(),
-            UserRole.Manager.ToString(),
-            UserRole.Receptionist.ToString()
+            [UserRole.Admin.ToString()] = "Full system administration and configuration.",
+            [UserRole.Manager.ToString()] = "Hotel operations, pricing, approvals, and reports.",
+            [UserRole.Receptionist.ToString()] = "Front desk reservations, check-in/out, rooms, and services.",
+            [UserRole.Housekeeper.ToString()] = "Assigned room cleaning and housekeeping tasks.",
+            [UserRole.Accountant.ToString()] = "Folios, payments, refunds, shift closing, and financial reports.",
+          };
+
+        var rolePermissionNames = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            [UserRole.Manager.ToString()] =
+            [
+                Permissions.Guests.Read, Permissions.Guests.Create, Permissions.Guests.Update,
+                Permissions.Reservations.Read, Permissions.Reservations.Create, Permissions.Reservations.Update,
+                Permissions.Reservations.Cancel, Permissions.Reservations.Modify,
+                Permissions.Rooms.Read, Permissions.Rooms.Create, Permissions.Rooms.Update,
+                Permissions.Rooms.ChangeStatus, Permissions.Rooms.Assign,
+                Permissions.RoomTypes.Read, Permissions.RoomTypes.Create, Permissions.RoomTypes.Update,
+                Permissions.RoomTypes.Deactivate,
+                Permissions.RatePlans.Read, Permissions.RatePlans.Create, Permissions.RatePlans.Update,
+                Permissions.RatePlans.Activate, Permissions.RatePlans.Deactivate,
+                Permissions.RateRules.Read, Permissions.RateRules.Create, Permissions.RateRules.Update,
+                Permissions.RateRules.Delete,
+                Permissions.Folios.Read, Permissions.Folios.Create, Permissions.Folios.Update,
+                Permissions.Folios.AddCharge, Permissions.Folios.Transfer, Permissions.Folios.Close,
+                Permissions.Folios.Reopen,
+                Permissions.Payments.Read, Permissions.Payments.Create, Permissions.Payments.Void,
+                 Permissions.Refunds.Read, Permissions.Refunds.Create, Permissions.Refunds.Approve,
+                Permissions.Services.Read, Permissions.Services.Create, Permissions.Services.Update,
+                Permissions.Services.Deactivate, Permissions.Services.AddToFolio,
+                Permissions.Housekeeping.Read, Permissions.Housekeeping.Assign,
+                Permissions.Housekeeping.Start, Permissions.Housekeeping.Complete,
+                Permissions.Housekeeping.ReportIssue,
+                Permissions.Expenses.Read, Permissions.Expenses.Create, Permissions.Expenses.Update,
+                Permissions.Expenses.Void,
+                Permissions.Reports.Read, Permissions.Reports.Export, Permissions.AuditLogs.Read,
+                Permissions.Properties.Read, Permissions.Properties.Update,
+                
+            ],
+            [UserRole.Receptionist.ToString()] =
+            [
+                Permissions.Guests.Read, Permissions.Guests.Create, Permissions.Guests.Update,
+                Permissions.Reservations.Read, Permissions.Reservations.Create, Permissions.Reservations.Update,
+                Permissions.Reservations.Cancel, Permissions.Reservations.Modify,
+                Permissions.Rooms.Read, Permissions.Rooms.Assign, Permissions.RoomTypes.Read,
+                Permissions.RatePlans.Read,
+                Permissions.Folios.Read, Permissions.Folios.AddCharge,
+                Permissions.Services.Read, Permissions.Services.AddToFolio,
+                Permissions.Housekeeping.Read, Permissions.Housekeeping.ReportIssue
+            ],
+            [UserRole.Housekeeper.ToString()] =
+            [
+                Permissions.Rooms.Read,
+                Permissions.Housekeeping.Read, Permissions.Housekeeping.Start,
+                Permissions.Housekeeping.Complete, Permissions.Housekeeping.ReportIssue
+            ],
+            [UserRole.Accountant.ToString()] =
+            [
+                Permissions.Reservations.Read, Permissions.Guests.Read,
+                Permissions.Folios.Read, Permissions.Folios.Update, Permissions.Folios.Close,
+                Permissions.Folios.Reopen,
+                Permissions.Payments.Read, Permissions.Payments.Create, Permissions.Payments.Void,
+                 Permissions.Refunds.Read, Permissions.Refunds.Create, Permissions.Refunds.Approve,
+                Permissions.Expenses.Read, Permissions.Expenses.Create, Permissions.Expenses.Update,
+                Permissions.Expenses.Void,
+                Permissions.Reports.Read, Permissions.Reports.Export
+            ],
+          
+           
         };
 
-        foreach (var roleName in roleNames)
+        foreach (var (roleName, description) in roleDescriptions)
         {
-            if (await roleManager.RoleExistsAsync(roleName))
+            var role = await roleManager.FindByNameAsync(roleName);
+            if (role is null)
             {
-                continue;
+                var result = await roleManager.CreateAsync(new Role
+                {
+                    Name = roleName,
+                    Description = description,
+                    IsActive = true
+                });
+                EnsureIdentitySuccess(result, $"create role {roleName}");
             }
-
-            var result = await roleManager.CreateAsync(new Role
+            else if (role.Description != description || !role.IsActive)
             {
-                Name = roleName,
-                Description = $"Demo {roleName} role.",
-                IsActive = true
-            });
-
-            EnsureIdentitySuccess(result, $"create role {roleName}");
+                role.Description = description;
+                role.IsActive = true;
+                EnsureIdentitySuccess(await roleManager.UpdateAsync(role), $"update role {roleName}");
+            }
         }
 
         var permissions = await context.Permissions.ToListAsync(cancellationToken);
+        var permissionsByName = permissions.ToDictionary(x => x.Name, StringComparer.OrdinalIgnoreCase);
         var roles = await context.Roles
-            .Where(role => roleNames.Contains(role.Name!))
+            .Where(role => roleDescriptions.Keys.Contains(role.Name!))
             .ToListAsync(cancellationToken);
 
         foreach (var role in roles)
         {
-            var existingPermissionIds =
-                (await context.RolePermissions
-                    .Where(item => item.RoleId == role.Id)
-                    .Select(item => item.PermissionId)
-                    .ToListAsync(cancellationToken))
+            var desiredNames = string.Equals(role.Name, UserRole.Admin.ToString(), StringComparison.OrdinalIgnoreCase)
+                ? permissions.Select(x => x.Name).ToHashSet(StringComparer.OrdinalIgnoreCase)
+                : rolePermissionNames[role.Name!].ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var unknownNames = desiredNames.Where(name => !permissionsByName.ContainsKey(name)).ToArray();
+            if (unknownNames.Length > 0)
+            {
+                throw new InvalidOperationException(
+                    $"Role '{role.Name}' references unknown permissions: {string.Join(", ", unknownNames)}");
+            }
+
+            var existingLinks = await context.RolePermissions
+                .Include(item => item.Permission)
+                .Where(item => item.RoleId == role.Id)
+                .ToListAsync(cancellationToken);
+
+            context.RolePermissions.RemoveRange(existingLinks.Where(link =>
+                !desiredNames.Contains(link.Permission.Name)));
+
+            var existingPermissionIds = existingLinks
+                .Where(link => desiredNames.Contains(link.Permission.Name))
+                .Select(link => link.PermissionId)
                 .ToHashSet();
 
-            foreach (var permission in permissions)
+            foreach (var permissionName in desiredNames)
             {
-                if (existingPermissionIds.Contains(permission.Id))
+                var permission = permissionsByName[permissionName];
+                if (!existingPermissionIds.Contains(permission.Id))
                 {
-                    continue;
+                    context.RolePermissions.Add(new RolePermission
+                    {
+                        RoleId = role.Id,
+                        PermissionId = permission.Id
+                    });
                 }
-
-                context.RolePermissions.Add(new RolePermission
-                {
-                    RoleId = role.Id,
-                    PermissionId = permission.Id
-                });
             }
         }
-
 
         await context.SaveChangesAsync(cancellationToken);
     }
@@ -224,6 +312,35 @@ public static class DatabaseSeeder
             property.ID,
             UserRole.Manager.ToString(),
             cancellationToken);
+
+        await EnsureUserAsync(
+            userManager,
+            "receptionist@hotelhup.local",
+            "Receptionist@123",
+            "HotelHup Demo Receptionist",
+            property.ID,
+            UserRole.Receptionist.ToString(),
+            cancellationToken);
+
+        await EnsureUserAsync(
+            userManager,
+            "housekeeper@hotelhup.local",
+            "Housekeeper@123",
+            "HotelHup Demo Housekeeper",
+            property.ID,
+            UserRole.Housekeeper.ToString(),
+            cancellationToken);
+
+        await EnsureUserAsync(
+            userManager,
+            "accountant@hotelhup.local",
+            "Accountant@123",
+            "HotelHup Demo Accountant",
+            property.ID,
+            UserRole.Accountant.ToString(),
+            cancellationToken);
+
+       
     }
 
     private static async Task EnsureUserAsync(

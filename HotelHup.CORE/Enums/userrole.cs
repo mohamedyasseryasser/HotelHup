@@ -13,6 +13,5 @@ namespace HotelHup.CORE.Enums
         Manager,
         Housekeeper,
         Accountant,
-        Maintenance,
-    }
+     }
 }

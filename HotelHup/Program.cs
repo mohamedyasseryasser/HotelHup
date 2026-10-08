@@ -1,13 +1,16 @@
 ﻿using System.Reflection;
 using System.Text;
+using Hangfire;
+using Hangfire.Dashboard;
 using HotelHup.APPLICATION.Constant;
 using HotelHup.APPLICATION.interfacesrepo;
 using HotelHup.APPLICATION.services.implementation;
 using HotelHup.APPLICATION.services.interfaces;
 using HotelHup.CORE.Entities;
+using HotelHup.CORE.Enums;
 using HotelHup.Data;
 using HotelHup.INFRASTRUCTURE.Context;
-using HotelHup.INFRASTRUCTURE.repos;
+ using HotelHup.INFRASTRUCTURE.repos;
 using HotelHup.INFRASTRUCTURE.services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -27,6 +30,7 @@ public class Program
             builder.Configuration.GetConnectionString("HotelHup")
             ?? throw new InvalidOperationException(
                 "Connection string 'HotelHup' not found.");
+        var hangfireEnabled = builder.Configuration.GetValue("Hangfire:Enabled", true);
 
         var jwtKey =
             builder.Configuration["JWT:Key"]
@@ -35,6 +39,16 @@ public class Program
 
         builder.Services.AddDbContext<hotelhupContext>(options =>
             options.UseSqlServer(connectionString));
+
+        if (hangfireEnabled)
+        {
+            builder.Services.AddHangfire(configuration => configuration
+                .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+                .UseSimpleAssemblyNameTypeSerializer()
+                .UseRecommendedSerializerSettings()
+                .UseSqlServerStorage(connectionString));
+            builder.Services.AddHangfireServer();
+        }
 
         builder.Services.AddHttpContextAccessor();
 
@@ -116,12 +130,11 @@ public class Program
 
         builder.Services.AddScoped<IPropertyTaxRepo, PropertyTaxRepo>();
         builder.Services.AddScoped<IUserRepository, UserRepository>();
-         builder.Services.AddScoped<IRoomTypeRepository, RoomTypeRepository>();
+        builder.Services.AddScoped<IReservationRepository, ReservationRepository>();
+        builder.Services.AddScoped<IRoomTypeRepository, RoomTypeRepository>();
         builder.Services.AddScoped<IRatePlanRepository, RatePlanRepository>();
         builder.Services.AddScoped<IFolioRepository, FolioRepository>();
         builder.Services.AddScoped<IServiceRepository, ServiceRepository>();
-        builder.Services.AddScoped<IExpenseRepository, ExpenseRepository>();
-        builder.Services.AddScoped<IReportRepository, ReportRepository>();
         // Application Services
         builder.Services.AddScoped<IAuthService, AuthService>();
 
@@ -137,12 +150,13 @@ public class Program
         builder.Services.AddScoped<IPropertyTax, PropertyTax>();
         builder.Services.AddScoped<ITokenService, TokenService>();
         builder.Services.AddScoped<IUserService, UserService>();
-         builder.Services.AddScoped<IRoomTypeService, RoomTypeService>();
+        builder.Services.AddScoped<IRoomTypeService, RoomTypeService>();
         builder.Services.AddScoped<IRatePlanService, RatePlanService>();
         builder.Services.AddScoped<IFolioService, FolioService>();
         builder.Services.AddScoped<IServiceService, ServiceService>();
-        builder.Services.AddScoped<IExpenseService, ExpenseService>();
-        builder.Services.AddScoped<IReportService , ReportService>();
+        builder.Services.AddScoped<IReservationService, ReservationService>();
+        builder.Services.AddScoped<ISystemActorProvider, SystemActorProvider>();
+       
         builder.Services.AddCors(options =>
             options.AddPolicy(
                 "AngularPolicy",
@@ -206,7 +220,8 @@ public class Program
          */
         var seedEnabled = builder.Configuration.GetValue(
             "Seed:Enabled",
-            builder.Environment.IsDevelopment());
+            builder.Environment.IsDevelopment()
+            );
 
         if (seedEnabled)
         {
@@ -225,6 +240,8 @@ public class Program
 
         app.UseAuthentication();
         app.UseAuthorization();
+
+        
 
         app.MapControllers();
 
@@ -258,4 +275,6 @@ public class Program
                     policy.RequireAuthenticatedUser());
         }
     }
+
+   
 }
