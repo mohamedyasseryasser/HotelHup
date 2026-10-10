@@ -22,13 +22,13 @@ namespace HotelHup.INFRASTRUCTURE.repos
             _context = context;
             _userManager = userManager;
         }
-        public async Task<User?> GetuserByIdAsync(string userId , CancellationToken cancellationToken = default)
+        public async Task<User?> GetuserByIdAsync(string userId, CancellationToken cancellationToken = default)
         {
             var normalizedId = userId.Trim();
             return await
                  _context.Users.
                 Include(u => u.Property).AsNoTracking().
-                FirstOrDefaultAsync(u => u.Id == normalizedId  ,cancellationToken);
+                FirstOrDefaultAsync(u => u.Id == normalizedId, cancellationToken);
         }
         public async Task<User?> GetByIdAsync(string userId, CancellationToken cancellationToken = default)
         {
@@ -55,7 +55,7 @@ namespace HotelHup.INFRASTRUCTURE.repos
                 .AsNoTracking()
                 .SingleOrDefaultAsync(user => user.NormalizedUserName == normalizedUserName, cancellationToken);
         }
- 
+
         public async Task<IReadOnlyList<User>> GetListAsync(
             string? userName,
             string? fullName,
@@ -342,5 +342,86 @@ namespace HotelHup.INFRASTRUCTURE.repos
 
             return query;
         }
+
+        public async Task<IReadOnlyList<Role>> GetRolesListAsync(
+    string? search,
+    bool? isActive,
+    string? permissionName,
+    int skip,
+    int take,
+    CancellationToken cancellationToken = default)
+        {
+            var query = BuildRolesQuery(
+                search,
+                isActive,
+                permissionName);
+
+            return await query
+                .OrderBy(role => role.Name)
+                .ThenBy(role => role.Id)
+                .Skip(skip)
+                .Take(take)
+                .AsNoTracking()
+                .ToListAsync(cancellationToken);
+        }
+
+    public Task<int> CountRolesAsync(
+    string? search,
+    bool? isActive,
+    string? permissionName,
+    CancellationToken cancellationToken = default)
+        {
+            return BuildRolesQuery(
+                    search,
+                    isActive,
+                    permissionName)
+                .CountAsync(cancellationToken);
+        }
+        private IQueryable<Role> BuildRolesQuery(
+    string? search,
+    bool? isActive,
+    string? permissionName)
+        {
+            var query = _context.Set<Role>()
+                .Include(role => role.RolePermissions)
+                    .ThenInclude(rolePermission => rolePermission.Permission)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var normalizedSearch = search.Trim().ToLower();
+
+                query = query.Where(role =>
+                    (role.Name != null &&
+                     role.Name.ToLower().Contains(normalizedSearch))
+                    ||
+                    (role.Description != null &&
+                     role.Description.ToLower().Contains(normalizedSearch)));
+            }
+
+            if (isActive.HasValue)
+            {
+                query = query.Where(role =>
+                    role.IsActive == isActive.Value);
+            }
+
+            if (!string.IsNullOrWhiteSpace(permissionName))
+            {
+                var normalizedPermissionName =
+                    permissionName.Trim().ToLower();
+
+                query = query.Where(role =>
+                    role.RolePermissions.Any(rolePermission =>
+                        rolePermission.Permission != null &&
+                        rolePermission.Permission.Name
+                            .ToLower()
+                            .Contains(normalizedPermissionName)));
+            }
+
+            return query;
+        }
+
+
+       
     }
 }

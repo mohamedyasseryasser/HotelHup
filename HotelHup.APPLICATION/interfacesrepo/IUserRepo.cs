@@ -47,5 +47,18 @@ namespace HotelHup.APPLICATION.interfacesrepo
         Task<IdentityResult> ReplaceRolesAsync(User user, IReadOnlyList<string> roleNames, AuditLog auditLog, CancellationToken cancellationToken = default);
         Task AddAuditAsync(AuditLog auditLog, CancellationToken cancellationToken = default);
         Task SaveChangesAsync(CancellationToken cancellationToken = default);
+        Task<IReadOnlyList<Role>> GetRolesListAsync(
+    string? search,
+    bool? isActive,
+    string? permissionName,
+    int skip,
+    int take,
+    CancellationToken cancellationToken = default);
+
+        Task<int> CountRolesAsync(
+            string? search,
+            bool? isActive,
+            string? permissionName,
+            CancellationToken cancellationToken = default);
     }
 }

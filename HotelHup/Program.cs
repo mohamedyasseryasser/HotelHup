@@ -218,6 +218,7 @@ public class Program
          *   "Enabled": true
          * }
          */
+       
         var seedEnabled = builder.Configuration.GetValue(
             "Seed:Enabled",
             builder.Environment.IsDevelopment()
@@ -230,11 +231,10 @@ public class Program
                 .GetResult();
         }
 
-        if (app.Environment.IsDevelopment())
-        {
+      
             app.UseSwagger();
             app.UseSwaggerUI();
-        }
+               
 
         app.UseCors("AngularPolicy");
 

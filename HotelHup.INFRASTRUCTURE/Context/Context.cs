@@ -124,7 +124,8 @@ namespace HotelHup.INFRASTRUCTURE.Context
                 entity.HasIndex(t => new { t.PropertyId, t.Name }).
                 IsUnique().
                 IsClustered(false);
-
+                entity .Property(x => x.Rate)
+    .HasPrecision(18, 4);
 
                 entity.HasMany(x => x.ReservationTaxSnapshots)
                     .WithOne(x => x.Tax)
@@ -848,7 +849,8 @@ namespace HotelHup.INFRASTRUCTURE.Context
 
                 entity.Property(x => x.Balance)
                     .HasPrecision(18, 2);
-
+                entity.Property(x => x.CreditBalance)
+    .HasPrecision(18, 2);
                 entity.HasOne(x => x.Reservation)
                     .WithOne(x => x.Folio)
                     .HasForeignKey<Folio>(x => x.ReservationId)

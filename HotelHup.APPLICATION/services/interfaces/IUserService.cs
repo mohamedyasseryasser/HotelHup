@@ -1,4 +1,5 @@
 ﻿using HotelHup.APPLICATION.DTO.General;
+using HotelHup.APPLICATION.DTO.role;
 using HotelHup.APPLICATION.DTO.user;
 using HotelHup.CORE.Entities;
 using System;
@@ -21,5 +22,11 @@ namespace HotelHup.APPLICATION.services.interfaces
         Task<ResponseStatus<ResponseUserDto>> DeactivateAsync(User currentuser,string userId, CancellationToken cancellationToken = default);
         Task<ResponseStatus<IReadOnlyList<ResponseRoleDto>>> GetRolesAsync(User currentuser,string userId, CancellationToken cancellationToken = default);
         Task<ResponseStatus<ResponseUserDto>> ReplaceRolesAsync(User actor,string userId, ReplaceUserRolesRequestDto request, CancellationToken cancellationToken = default);
+        Task<ResponseStatus<PagedResponse<RoleListResponseDto>>>
+        GetRolesListAsync(
+            User actor,
+            RoleListRequestDto request,
+            CancellationToken cancellationToken = default);
+
     }
 }

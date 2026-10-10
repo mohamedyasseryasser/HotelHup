@@ -1,6 +1,7 @@
 ﻿using HotelHup.APPLICATION.Constant;
 using HotelHup.APPLICATION.DTO.aduitlog;
 using HotelHup.APPLICATION.DTO.General;
+using HotelHup.APPLICATION.DTO.role;
 using HotelHup.APPLICATION.DTO.user;
 using HotelHup.APPLICATION.interfacesrepo;
 using HotelHup.APPLICATION.services.interfaces;
@@ -203,6 +204,11 @@ namespace HotelHup.APPLICATION.services.implementation
             }
 
             var exitroles = roleValidation.Roles;
+            var propertyRoleError = ValidatePropertyRoleAssignment(propertyId, exitroles);  
+            if (propertyRoleError is not null) 
+            {
+                return Failer<ResponseUserDto>(propertyRoleError, statusCode: 400);  
+            }
             //normalize
             var userName = request.UserName.Trim();
             var fullName = request.FullName.Trim();
@@ -410,9 +416,7 @@ namespace HotelHup.APPLICATION.services.implementation
             
             CancellationToken cancellationToken = default)
         {
-            
-
-           
+          
             var user = await _repository.GetuserByIdAsync(userId, cancellationToken);
             if (currentuser is null || user is null || !await IsWithinScopeAsync(currentuser, user.PropertyId,cancellationToken))
             {
@@ -484,11 +488,6 @@ namespace HotelHup.APPLICATION.services.implementation
                     message: "User ID is required.",
                     statusCode: 400);
             }
-
- 
-
-           
-
             var user = await _repository.GetByIdAsync(
                 userId,
                 cancellationToken);
@@ -533,7 +532,11 @@ namespace HotelHup.APPLICATION.services.implementation
                     rolesResult.Errors,
                     rolesResult.ErrorStatus);
             }
-
+            var propertyRoleError = ValidatePropertyRoleAssignment(user.PropertyId, rolesResult.Roles);   
+            if (propertyRoleError is not null)  
+            {
+                return Failer<ResponseUserDto>(propertyRoleError, statusCode: 400);  
+            }
             var oldRoles = await _repository.GetRolesAsync(
                 user.Id,
                 cancellationToken);
@@ -582,6 +585,109 @@ namespace HotelHup.APPLICATION.services.implementation
             return Success(
                 await MapAsync(updatedUser, cancellationToken),
                 "User roles replaced successfully.");
+        }
+        public async Task<ResponseStatus<PagedResponse<RoleListResponseDto>>>
+    GetRolesListAsync(
+        User actor,
+        RoleListRequestDto request,
+        CancellationToken cancellationToken = default)
+        {
+            if (actor is null)
+            {
+                return Failer<PagedResponse<RoleListResponseDto>>(
+                    message: "Current user is required.",
+                    statusCode: 401);
+            }
+
+            if (!actor.IsActive)
+            {
+                return Failer<PagedResponse<RoleListResponseDto>>(
+                    message: "Current user is not active.",
+                    statusCode: 403);
+            }
+
+            if (request is null)
+            {
+                return Failer<PagedResponse<RoleListResponseDto>>(
+                    message: "Request is required.",
+                    statusCode: 400);
+            }
+
+            var permissionResult =
+                await checkpermissionandstateuser(
+                    actor.Id,
+                    cancellationToken,
+                    Permissions.Users.Read);
+
+            if (!permissionResult.Success)
+            {
+                return Failer<PagedResponse<RoleListResponseDto>>(
+                    message: permissionResult.Message,
+                    errors: permissionResult.Errors,
+                    statusCode: permissionResult.StatusCode);
+            }
+
+            var pageNumber = Math.Max(
+                request.Pg?.PageNumber ?? 1,
+                1);
+
+            var pageSize = Math.Clamp(
+                request.Pg?.PageSize ?? 20,
+                1,
+                100);
+
+            var search = request.Search?.Trim();
+
+            var permissionName =
+                request.PermissionName?.Trim();
+
+            var skip = (pageNumber - 1) * pageSize;
+
+            var roles = await _repository.GetRolesListAsync(
+                search,
+                request.IsActive,
+                permissionName,
+                skip,
+                pageSize,
+                cancellationToken);
+
+            var totalCount = await _repository.CountRolesAsync(
+                search,
+                request.IsActive,
+                permissionName,
+                cancellationToken);
+
+            var items = roles
+                .Select(role => new RoleListResponseDto
+                {
+                    RoleId = role.Id,
+                    RoleName = role.Name ?? string.Empty,
+                    Description = role.Description,
+                    IsActive = role.IsActive,
+                    Permissions = role.RolePermissions
+                        .Where(rolePermission =>
+                            rolePermission.Permission != null)
+                        .Select(rolePermission =>
+                            rolePermission.Permission.Name)
+                        .Where(permissionName =>
+                            !string.IsNullOrWhiteSpace(permissionName))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .OrderBy(permissionName => permissionName)
+                        .ToArray()
+                })
+                .ToList();
+
+            var data = new PagedResponse<RoleListResponseDto>
+            {
+                Items = items,
+                PageNumber = pageNumber,
+                PageSize = pageSize,
+                TotalCount = totalCount
+            };
+
+            return Success(
+                data,
+                "Roles retrieved successfully.");
         }
 
         public async Task<ResponseStatus<bool>>checkpermissionandstateuser(
@@ -883,6 +989,47 @@ namespace HotelHup.APPLICATION.services.implementation
 
             return httpContext.TraceIdentifier;
         }
+        private static string? ValidatePropertyRoleAssignment(
+      int? propertyId,
+      IReadOnlyList<Role> roles)
+        {
+            var hasAdminRole = roles.Any(role =>
+                string.Equals(
+                    role.Name,
+                    nameof(UserRole.Admin),
+                    StringComparison.OrdinalIgnoreCase));
 
+            if (hasAdminRole && propertyId.HasValue)
+            {
+                return "Admin users cannot belong to a Property.";
+            }
+
+            if (!propertyId.HasValue)
+            {
+                var isSingleAdminRole = roles.Count == 1 &&
+                    string.Equals(
+                        roles[0].Name,
+                        nameof(UserRole.Admin),
+                        StringComparison.OrdinalIgnoreCase);
+
+                if (!isSingleAdminRole)
+                {
+                    return "A user without a PropertyId must have exactly one role, and that role must be Admin.";
+                }
+            }
+
+            var hasNonAdminRole = roles.Any(role =>
+                !string.Equals(
+                    role.Name,
+                    nameof(UserRole.Admin),
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (hasNonAdminRole && !propertyId.HasValue)
+            {
+                return "Non-Admin users must belong to a Property.";
+            }
+
+            return null;
+        }
     }
 }
