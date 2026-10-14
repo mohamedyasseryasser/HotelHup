@@ -10,6 +10,7 @@ namespace HotelHup.APPLICATION.DTO.user
     {
         public string UserId { get; init; } = string.Empty;
         public string UserName { get; init; } = string.Empty;
+        public string? Email { get; init; }
         public string FullName { get; init; } = string.Empty;
         public string? Address { get; init; }
         public int? PropertyId { get; init; }

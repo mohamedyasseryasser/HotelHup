@@ -17,7 +17,8 @@ namespace HotelHup.APPLICATION.DTO.user
 
         [StringLength(1000)]
         public string? Address { get; init; }
-
+        [Required, EmailAddress, StringLength(256)]
+        public string Email { get; init; } = string.Empty;
         public int? PropertyId { get; init; }
 
         [Required, StringLength(128, MinimumLength = 6)]

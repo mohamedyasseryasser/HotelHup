@@ -31,7 +31,7 @@ namespace HotelHup.APPLICATION.services.implementation
             HttpContextAccessor = httpContextAccessor;
             _repo = repo;
             PropertyRepository = propertyRepository;
-            repository = repository;
+            this.repository = repository ?? throw new ArgumentNullException(nameof(repository));
         }
 
         public async Task<
@@ -264,7 +264,7 @@ namespace HotelHup.APPLICATION.services.implementation
                 await PropertyRepository.SaveChangesAsync(ct);
 
                 await PropertyRepository.AddAuditLogAsync(
-                    Audit(
+                    Audit(actorid:actor.Id,
                         entity: "Tax",
                         action: "TaxCreated",
                         id: tax.Id.ToString(),
@@ -508,6 +508,7 @@ namespace HotelHup.APPLICATION.services.implementation
 
             await PropertyRepository.AddAuditLogAsync(
                 Audit(
+                    actorid:actor.Id,
                     entity: "Tax",
                     action: "TaxUpdated",
                     id: tax.Id.ToString(),
@@ -639,6 +640,7 @@ namespace HotelHup.APPLICATION.services.implementation
 
             await PropertyRepository.AddAuditLogAsync(
                 Audit(
+                    actorid:actor.Id,
                     entity: "Tax",
                     action: "TaxActivated",
                     id: tax.Id.ToString(),
@@ -801,7 +803,7 @@ namespace HotelHup.APPLICATION.services.implementation
             };
 
             await PropertyRepository.AddAuditLogAsync(
-                Audit(
+                Audit(actorid: actor.Id,
                     entity: "Tax",
                     action: "TaxDeactivated",
                     id: tax.Id.ToString(),

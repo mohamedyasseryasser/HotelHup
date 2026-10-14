@@ -4,7 +4,9 @@ namespace HotelHup.APPLICATION.DTO.user
 {
     public sealed class UpdateUserRequestDto
     {
-        
+
+        [Required, EmailAddress, StringLength(256)]
+        public string? Email { get; init; }
 
         [StringLength(200, MinimumLength = 2),Required]
         public string? FullName { get; init; }

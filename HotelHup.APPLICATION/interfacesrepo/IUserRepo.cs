@@ -12,8 +12,9 @@ namespace HotelHup.APPLICATION.interfacesrepo
     public interface IUserRepository
     {
           Task<User?> GetuserByIdAsync( string userId, CancellationToken cancellationToken = default);
+        Task<User?> GetTrackedUserByIdAsync(string userId, CancellationToken cancellationToken = default);
 
-         Task<User?> GetByIdAsync(string userId, CancellationToken cancellationToken = default);
+        Task<User?> GetByIdAsync(string userId, CancellationToken cancellationToken = default);
         Task<User?> GetByUserNameAsync(string normalizedUserName, CancellationToken cancellationToken = default);
         Task<IReadOnlyList<User>> GetListAsync(
             string? userName,
@@ -60,5 +61,11 @@ namespace HotelHup.APPLICATION.interfacesrepo
             bool? isActive,
             string? permissionName,
             CancellationToken cancellationToken = default);
+
+        Task<bool> ExistsByNormalizedEmailAsync(
+    string normalizedEmail,
+    string? excludingUserId = null,
+    CancellationToken cancellationToken = default);
+
     }
 }

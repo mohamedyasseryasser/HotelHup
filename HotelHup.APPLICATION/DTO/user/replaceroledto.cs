@@ -9,6 +9,7 @@ namespace HotelHup.APPLICATION.DTO.user
     public sealed class ReplaceUserRolesRequestDto
     {
         public IReadOnlyList<string> RoleIds { get; init; } = Array.Empty<string>();
+        public int? PropertyId { get; init; }
         public string? Reason { get; init; }
     }
 }

@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Drawing;
 using System.Linq;
 using System.Numerics;
@@ -29,7 +30,7 @@ namespace HotelHup.APPLICATION.services.implementation
         private readonly IHttpContextAccessor httpContextAccessor;
         private readonly IUserRepository _repository;
 
-        public UserService(IHttpContextAccessor httpContextAccessor,IUserRepository repository)
+        public UserService(IHttpContextAccessor httpContextAccessor, IUserRepository repository)
         {
             this.httpContextAccessor = httpContextAccessor;
             _repository = repository;
@@ -90,17 +91,17 @@ namespace HotelHup.APPLICATION.services.implementation
         }
 
         public async Task<ResponseStatus<ResponseUserDto>> GetByIdAsync(
-            User currentuser,string userId,
+            User currentuser, string userId,
             CancellationToken cancellationToken = default)
         {
-            if (userId==null||string.IsNullOrWhiteSpace(userId))
+            if (userId == null || string.IsNullOrWhiteSpace(userId))
             {
-                return Failer<ResponseUserDto>(message:"userid is empty",statusCode:400);
+                return Failer<ResponseUserDto>(message: "userid is empty", statusCode: 400);
             }
             var user = await _repository.GetByIdAsync(userId, cancellationToken);
-            if (currentuser is null || user is null || !await IsWithinScopeAsync(currentuser, user.PropertyId,cancellationToken))
+            if (currentuser is null || user is null || !await IsWithinScopeAsync(currentuser, user.PropertyId, cancellationToken))
             {
-                return Failer<ResponseUserDto>(message:"User was not found.",statusCode: 404);
+                return Failer<ResponseUserDto>(message: "User was not found.", statusCode: 404);
             }
 
             return Success(await MapAsync(user, cancellationToken), "User retrieved successfully.");
@@ -188,8 +189,8 @@ namespace HotelHup.APPLICATION.services.implementation
                     "The requested property is outside your scope.",
                     statusCode: 403);
             }
-            
- 
+
+
 
             var roleValidation = await ValidateRolesAsync(
                 user,
@@ -204,17 +205,34 @@ namespace HotelHup.APPLICATION.services.implementation
             }
 
             var exitroles = roleValidation.Roles;
-            var propertyRoleError = ValidatePropertyRoleAssignment(propertyId, exitroles);  
-            if (propertyRoleError is not null) 
+            var propertyRoleError = ValidatePropertyRoleAssignment(propertyId, exitroles);
+            if (propertyRoleError is not null)
             {
-                return Failer<ResponseUserDto>(propertyRoleError, statusCode: 400);  
+                return Failer<ResponseUserDto>(propertyRoleError, statusCode: 400);
             }
             //normalize
             var userName = request.UserName.Trim();
+            var email = request.Email.Trim();
             var fullName = request.FullName.Trim();
-            if (string.IsNullOrWhiteSpace(userName) || string.IsNullOrWhiteSpace(fullName))
+            if (string.IsNullOrWhiteSpace(userName) ||
+                string.IsNullOrWhiteSpace(email) ||
+                string.IsNullOrWhiteSpace(fullName))
             {
-                return Failer<ResponseUserDto>(message: "UserName and FullName are required.", statusCode: 400);
+                return Failer<ResponseUserDto>(message: "UserName, Email and FullName are required.", statusCode: 400);
+            }
+
+            if (!new EmailAddressAttribute().IsValid(email))
+            {
+                return Failer<ResponseUserDto>(
+                    message: "Email must be a valid email address.",
+                    statusCode: 400);
+            }
+
+            if (!await IsEmailUniqueAsync(email, cancellationToken: cancellationToken))
+            {
+                return Failer<ResponseUserDto>(
+                    message: "Email is already in use.",
+                    statusCode: 409);
             }
 
             var normalizedUserName = Normalize(userName);
@@ -227,12 +245,14 @@ namespace HotelHup.APPLICATION.services.implementation
             {
                 UserName = userName,
                 NormalizedUserName = normalizedUserName,
+                Email = email,
+                NormalizedEmail = Normalize(email),
                 FullName = fullName,
                 Address = NormalizeOptional(request.Address),
                 PropertyId = propertyId,
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
-               
+
             }; var auditDto = new AddAuditLogDto
             {
                 userid = user.Id,
@@ -262,48 +282,76 @@ namespace HotelHup.APPLICATION.services.implementation
                 return FailureFromIdentity<ResponseUserDto>(responsedatabase, "Unable to create user.");
             }
             var getuser = await _repository.GetByIdAsync(userparam.Id, cancellationToken);
-            if (getuser==null)
+            if (getuser == null)
             {
-                return Failer<ResponseUserDto>(message:"user is not founded in database",statusCode:400);
+                return Failer<ResponseUserDto>(message: "user is not founded in database", statusCode: 400);
             }
-         
+
 
             return new ResponseStatus<ResponseUserDto>(
                 await MapAsync(getuser, cancellationToken), "User created successfully.", 201);
         }
 
         public async Task<ResponseStatus<ResponseUserDto>> UpdateAsync(
-            User actor,string userId,
+            User actor, string userId,
             UpdateUserRequestDto request,
             CancellationToken cancellationToken = default)
         {
-         //   var actor=await _repository.GetByIdAsync(request.actorid, cancellationToken);
-            if (actor==null||!actor.IsActive)
+            //   var actor=await _repository.GetByIdAsync(request.actorid, cancellationToken);
+            if (actor == null || !actor.IsActive)
             {
                 return Failer<ResponseUserDto>(message: "actor is not found", statusCode: 400);
 
             }
-            var user = await _repository.GetByIdAsync(userId, cancellationToken);
+            var user = await _repository.GetTrackedUserByIdAsync(userId, cancellationToken);
             //check user is active 
-            if (user ==null|| !user.IsActive)
+            if (user == null || !user.IsActive)
             {
-                return Failer<ResponseUserDto>(message:"user is not found",statusCode:400);
+                return Failer<ResponseUserDto>(message: "user is not found", statusCode: 400);
             }
-            if (actor is null ||!await IsWithinScopeAsync(actor, user.PropertyId.Value, cancellationToken)) 
+            if (!await IsWithinScopeAsync(actor, user.PropertyId, cancellationToken))
             {
-                return Failer<ResponseUserDto>(message:"User was not found.",statusCode:404);
+                return Failer<ResponseUserDto>(message: "User was not found.", statusCode: 404);
             }
 
             var oldValues = new Dictionary<string, object?>();
             var newValues = new Dictionary<string, object?>();
             var changed = false;
 
+            if (string.IsNullOrWhiteSpace(request.Email) ||
+                !new EmailAddressAttribute().IsValid(request.Email.Trim()))
+            {
+                return Failer<ResponseUserDto>(
+                    message: "A valid Email is required.",
+                    statusCode: 400);
+            }
+
+            var email = request.Email.Trim();
+            if (!await IsEmailUniqueAsync(email, user.Id, cancellationToken))
+            {
+                return Failer<ResponseUserDto>(
+                    message: "Email is already in use.",
+                    statusCode: 409);
+            }
+
+            if (!string.Equals(
+                    Normalize(user.Email ?? string.Empty),
+                    Normalize(email),
+                    StringComparison.Ordinal))
+            {
+                oldValues[nameof(user.Email)] = user.Email;
+                newValues[nameof(user.Email)] = email;
+                user.Email = email;
+                user.NormalizedEmail = Normalize(email);
+                changed = true;
+            }
+
             if (request.FullName is not null)
             {
                 var fullName = request.FullName.Trim();
                 if (string.IsNullOrWhiteSpace(fullName))
                 {
-                    return Failer<ResponseUserDto>(message:"FullName cannot be empty.",statusCode: 400);
+                    return Failer<ResponseUserDto>(message: "FullName cannot be empty.", statusCode: 400);
                 }
 
                 if (!string.Equals(user.FullName, fullName, StringComparison.Ordinal))
@@ -357,14 +405,14 @@ namespace HotelHup.APPLICATION.services.implementation
         }
 
         public async Task<ResponseStatus<ResponseUserDto>> ActivateAsync(
-            User currentuser,string userId,
+            User currentuser, string userId,
             CancellationToken cancellationToken = default)
         {
 
-             var user = await _repository.GetuserByIdAsync(userId, cancellationToken);
-            if (currentuser is null || user is null || !await IsWithinScopeAsync(currentuser, user.PropertyId,cancellationToken))
+            var user = await _repository.GetTrackedUserByIdAsync(userId, cancellationToken);
+            if (currentuser is null || user is null || !await IsWithinScopeAsync(currentuser, user.PropertyId, cancellationToken))
             {
-                return Failer<ResponseUserDto>(message:"User was not found.",statusCode: 404);
+                return Failer<ResponseUserDto>(message: "User was not found.", statusCode: 404);
             }
             if (user.IsActive)
             {
@@ -377,28 +425,28 @@ namespace HotelHup.APPLICATION.services.implementation
                 var property = await _repository.GetPropertyAsync(user.PropertyId.Value, cancellationToken);
                 if (property is null)
                 {
-                    return Failer<ResponseUserDto>(message:"Property was not found.",statusCode: 404);
+                    return Failer<ResponseUserDto>(message: "Property was not found.", statusCode: 404);
                 }
 
                 if (property.Status != PropertyStatus.Active)
                 {
-                    return Failer<ResponseUserDto>(message:"Users can only be activated in an active property.",statusCode: 422);
+                    return Failer<ResponseUserDto>(message: "Users can only be activated in an active property.", statusCode: 422);
                 }
             }
 
             user.IsActive = true;
             user.UpdatedAt = DateTime.UtcNow;
-            var auditlogdto = new AddAuditLogDto 
+            var auditlogdto = new AddAuditLogDto
             {
-                Action="activate",
-                CorrelationId=GetCorrelationId(),
+                Action = "activate",
+                CorrelationId = GetCorrelationId(),
                 NewValues = new { IsActive = true },
                 OldValues = new { IsActive = false },
-                PropertyId=user.PropertyId,
-                Reason=null,
-                userid=currentuser.Id,
-                TargetEntity=nameof(User),
-                TargetEntityId=user.Id
+                PropertyId = user.PropertyId,
+                Reason = null,
+                userid = currentuser.Id,
+                TargetEntity = nameof(User),
+                TargetEntityId = user.Id
             };
             var audit = CreateAuditLog(auditlogdto);
             var updateResult = await _repository.UpdateWithAuditAsync(user, audit, cancellationToken);
@@ -412,15 +460,15 @@ namespace HotelHup.APPLICATION.services.implementation
         }
 
         public async Task<ResponseStatus<ResponseUserDto>> DeactivateAsync(
-            User currentuser,string userId,
-            
+            User currentuser, string userId,
+
             CancellationToken cancellationToken = default)
         {
-          
-            var user = await _repository.GetuserByIdAsync(userId, cancellationToken);
-            if (currentuser is null || user is null || !await IsWithinScopeAsync(currentuser, user.PropertyId,cancellationToken))
+
+            var user = await _repository.GetTrackedUserByIdAsync(userId, cancellationToken);
+            if (currentuser is null || user is null || !await IsWithinScopeAsync(currentuser, user.PropertyId, cancellationToken))
             {
-                return Failer<ResponseUserDto>(message:"User was not found.",statusCode: 404);
+                return Failer<ResponseUserDto>(message: "User was not found.", statusCode: 404);
             }
 
             if (!user.IsActive)
@@ -434,8 +482,8 @@ namespace HotelHup.APPLICATION.services.implementation
             {
                 Action = "deactivate",
                 CorrelationId = GetCorrelationId(),
-                NewValues = new { IsActive = true },
-                OldValues = new { IsActive = false },
+                NewValues = new { IsActive = false },
+                OldValues = new { IsActive = true },
                 PropertyId = user.PropertyId,
                 Reason = null,
                 userid = currentuser.Id,
@@ -454,15 +502,15 @@ namespace HotelHup.APPLICATION.services.implementation
         }
 
         public async Task<ResponseStatus<IReadOnlyList<ResponseRoleDto>>> GetRolesAsync(
-            User currentuser,string userId,
+            User currentuser, string userId,
             CancellationToken cancellationToken = default)
         {
-           
 
-             var user = await _repository.GetByIdAsync(userId, cancellationToken);
-            if (currentuser is null || user is null || !await IsWithinScopeAsync(currentuser, user.PropertyId,cancellationToken))
+
+            var user = await _repository.GetByIdAsync(userId, cancellationToken);
+            if (currentuser is null || user is null || !await IsWithinScopeAsync(currentuser, user.PropertyId, cancellationToken))
             {
-                return Failer<IReadOnlyList<ResponseRoleDto>>(message:"User was not found.",statusCode: 404);
+                return Failer<IReadOnlyList<ResponseRoleDto>>(message: "User was not found.", statusCode: 404);
             }
 
             var roles = await _repository.GetRolesAsync(user.Id, cancellationToken);
@@ -488,7 +536,7 @@ namespace HotelHup.APPLICATION.services.implementation
                     message: "User ID is required.",
                     statusCode: 400);
             }
-            var user = await _repository.GetByIdAsync(
+            var user = await _repository.GetTrackedUserByIdAsync(
                 userId,
                 cancellationToken);
 
@@ -532,11 +580,74 @@ namespace HotelHup.APPLICATION.services.implementation
                     rolesResult.Errors,
                     rolesResult.ErrorStatus);
             }
-            var propertyRoleError = ValidatePropertyRoleAssignment(user.PropertyId, rolesResult.Roles);   
-            if (propertyRoleError is not null)  
+
+            var hasAdminRole = rolesResult.Roles.Any(role =>
+                string.Equals(
+                    role.Name,
+                    nameof(UserRole.Admin),
+                    StringComparison.OrdinalIgnoreCase));
+            var hasNonAdminRole = rolesResult.Roles.Any(role =>
+                !string.Equals(
+                    role.Name,
+                    nameof(UserRole.Admin),
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (hasAdminRole && hasNonAdminRole)
             {
-                return Failer<ResponseUserDto>(propertyRoleError, statusCode: 400);  
+                return Failer<ResponseUserDto>(
+                    message: "The Admin role cannot be combined with property-scoped roles.",
+                    statusCode: 400);
             }
+
+            var targetPropertyId = hasAdminRole
+                ? null
+                : request.PropertyId ?? user.PropertyId;
+
+            if (hasNonAdminRole)
+            {
+                if (!targetPropertyId.HasValue)
+                {
+                    return Failer<ResponseUserDto>(
+                        message: "PropertyId is required for non-Admin roles.",
+                        statusCode: 400);
+                }
+
+                var property = await _repository.GetPropertyAsync(
+                    targetPropertyId.Value,
+                    cancellationToken);
+
+                if (property is null)
+                {
+                    return Failer<ResponseUserDto>(
+                        message: "Property was not found.",
+                        statusCode: 404);
+                }
+
+                if (property.Status != PropertyStatus.Active)
+                {
+                    return Failer<ResponseUserDto>(
+                        message: "Non-Admin roles can only be assigned to an active Property.",
+                        statusCode: 422);
+                }
+            }
+
+            if (!await IsWithinScopeAsync(actor, targetPropertyId, cancellationToken))
+            {
+                return Failer<ResponseUserDto>(
+                    message: "User was not found.",
+                    statusCode: 404);
+            }
+
+            var propertyRoleError = ValidatePropertyRoleAssignment(targetPropertyId, rolesResult.Roles);
+            if (propertyRoleError is not null)
+            {
+                return Failer<ResponseUserDto>(propertyRoleError, statusCode: 400);
+            }
+
+            var oldPropertyId = user.PropertyId;
+            user.PropertyId = targetPropertyId;
+            user.UpdatedAt = DateTime.UtcNow;
+
             var oldRoles = await _repository.GetRolesAsync(
                 user.Id,
                 cancellationToken);
@@ -551,14 +662,18 @@ namespace HotelHup.APPLICATION.services.implementation
                 userid = actor.Id,
                 TargetEntity = nameof(User),
                 TargetEntityId = user.Id,
-                PropertyId = user.PropertyId,
+                PropertyId = targetPropertyId,
                 Action = "ReplaceRoles",
-                OldValues = oldRoles
-                    .Select(MapRole)
-                    .ToList(),
-                NewValues = rolesResult.Roles
-                    .Select(MapRole)
-                    .ToList(),
+                OldValues = new
+                {
+                    PropertyId = oldPropertyId,
+                    Roles = oldRoles.Select(MapRole).ToList()
+                },
+                NewValues = new
+                {
+                    PropertyId = targetPropertyId,
+                    Roles = rolesResult.Roles.Select(MapRole).ToList()
+                },
                 Reason = null,
                 CorrelationId = GetCorrelationId()
             };
@@ -690,7 +805,7 @@ namespace HotelHup.APPLICATION.services.implementation
                 "Roles retrieved successfully.");
         }
 
-        public async Task<ResponseStatus<bool>>checkpermissionandstateuser(
+        public async Task<ResponseStatus<bool>> checkpermissionandstateuser(
             string userid,
             CancellationToken cancellationToken,
             string permission)
@@ -840,7 +955,7 @@ namespace HotelHup.APPLICATION.services.implementation
                     status);
             }
         }
- 
+
 
         private async Task<ResponseUserDto> MapAsync(
 
@@ -855,6 +970,7 @@ namespace HotelHup.APPLICATION.services.implementation
             {
                 UserId = user.Id,
                 UserName = user.UserName ?? string.Empty,
+                Email = user.Email,
                 FullName = user.FullName,
                 Address = user.Address,
                 PropertyId = user.PropertyId,
@@ -875,6 +991,21 @@ namespace HotelHup.APPLICATION.services.implementation
         {
             return value.Trim().ToUpperInvariant();
         }
+
+        private async Task<bool> IsEmailUniqueAsync(
+            string email,
+            string? excludingUserId = null,
+            CancellationToken cancellationToken = default)
+        {
+            var normalizedEmail = Normalize(email);
+            var emailExists = await _repository.ExistsByNormalizedEmailAsync(
+                normalizedEmail,
+                excludingUserId,
+                cancellationToken: cancellationToken);
+
+            return !emailExists;
+        }
+
         private static AuditLog CreateAuditLog(AddAuditLogDto auditDto)
         {
             if (auditDto is null)
@@ -924,25 +1055,25 @@ namespace HotelHup.APPLICATION.services.implementation
             {
                 statuscode = 400;
             }
-            return new ResponseStatus<T>(message,errors, statuscode);
+            return new ResponseStatus<T>(message, errors, statuscode);
         }
         private async Task<bool> IsWithinScopeAsync(
       User actor,
       int? targetPropertyId,
       CancellationToken cancellationToken)
         {
-             if (actor is null || !actor.IsActive)
-             {
+            if (actor is null || !actor.IsActive)
+            {
                 return false;
-             }
+            }
 
-             if (actor.PropertyId.HasValue)
-             {
+            if (actor.PropertyId.HasValue)
+            {
                 return targetPropertyId.HasValue &&
                        actor.PropertyId.Value == targetPropertyId.Value;
-             }
+            }
 
-         
+
             var actorRoles = await _repository.GetRolesAsync(
                 actor.Id,
                 cancellationToken);
@@ -959,7 +1090,7 @@ namespace HotelHup.APPLICATION.services.implementation
                 return false;
             }
 
-             return true;
+            return true;
         }
 
         private static ResponseRoleDto MapRole(Role role)
@@ -974,7 +1105,7 @@ namespace HotelHup.APPLICATION.services.implementation
         private string GetCorrelationId()
         {
             var httpContext = httpContextAccessor.HttpContext;
-           
+
             if (httpContext is null)
             {
                 return Guid.NewGuid().ToString();

@@ -47,7 +47,17 @@ namespace HotelHup.INFRASTRUCTURE.repos
                                 r.IsActive)),
                     cancellationToken);
         }
-
+        public Task<User?> GetTrackedUserByIdAsync(
+          string userId,
+          CancellationToken cancellationToken = default)
+        {
+            var normalizedId = userId.Trim();
+            return _context.Users
+                .Include(user => user.Property)
+                .SingleOrDefaultAsync(
+                    user => user.Id == normalizedId,
+                    cancellationToken);
+        }
         public Task<User?> GetByUserNameAsync(string normalizedUserName, CancellationToken cancellationToken = default)
         {
             return _context.Users
@@ -420,8 +430,18 @@ namespace HotelHup.INFRASTRUCTURE.repos
 
             return query;
         }
+        public Task<bool> ExistsByNormalizedEmailAsync(
+    string normalizedEmail,
+    string? excludingUserId = null,
+    CancellationToken cancellationToken = default)
+        {
+            return _context.Users.AnyAsync(
+                user => user.NormalizedEmail == normalizedEmail &&
+                        (excludingUserId == null || user.Id != excludingUserId),
+                cancellationToken);
+        }
 
 
-       
+
     }
 }
