@@ -32,9 +32,10 @@ namespace HotelHup.APPLICATION.services.implementation
             HttpContextAccessor = httpContextAccessor;
             PropertyRepository = propertyRepository;
             _repo = repo;
-            repository = repository;
+            this.repository = repository
+                ?? throw new ArgumentNullException(nameof(repository));
         }
-      
+
         public async Task<ResponseStatus<IReadOnlyList<CancellationPolicyResponse>>>
             GetCancellationPoliciesAsync(User actor, int propertyId,
             CancellationToken ct = default)
@@ -206,6 +207,8 @@ namespace HotelHup.APPLICATION.services.implementation
             policy.Versions.Add(version);
 
             var audit = Audit(
+
+                actorid:actor.Id,
                 entity: "CancellationPolicy",
                 action: "CancellationPolicyCreated",
                 id: policy.Id.ToString(),
@@ -457,6 +460,7 @@ namespace HotelHup.APPLICATION.services.implementation
 
             await _repo.AddAuditLogAsync(
                 Audit(
+                    actorid:actor.Id,
                     entity: "CancellationPolicy",
                     action: "CancellationPolicyVersionCreated",
                     id: policy.Id.ToString(),
@@ -651,6 +655,7 @@ namespace HotelHup.APPLICATION.services.implementation
 
             await _repo.AddAuditLogAsync(
                 Audit(
+                    actorid:actor.Id,
                     entity: "CancellationPolicy",
                     action: auditAction,
                     id: policy.Id.ToString(),
