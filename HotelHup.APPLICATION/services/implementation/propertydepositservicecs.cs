@@ -398,7 +398,7 @@ namespace HotelHup.APPLICATION.services.implementation
             policy.Versions.Add(newVersion);
 
             await PropertyRepository.AddAuditLogAsync(
-                Audit(
+                Audit(actorid:actor.Id,
                     entity: "DepositPolicy",
                     action: "DepositPolicyVersionCreated",
                     id: policy.Id.ToString(),

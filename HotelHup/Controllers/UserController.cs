@@ -61,7 +61,7 @@ namespace HotelHup.API.Controllers
         [HttpGet("{userId}")]
         [Authorize(Policy = Permissions.Users.Read)]
 
-        public async Task<IActionResult> GetById(string userId, CancellationToken cancellationToken)
+        public async Task<IActionResult> GetById(string userId,CancellationToken cancellationToken)
         {
             var checkauth = await Authorized(cancellationToken, Permissions.Users.Read);
             if (!checkauth.Success || checkauth.Data == null)

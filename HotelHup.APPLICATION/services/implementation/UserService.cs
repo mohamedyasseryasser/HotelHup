@@ -29,30 +29,85 @@ namespace HotelHup.APPLICATION.services.implementation
     {
         private readonly IHttpContextAccessor httpContextAccessor;
         private readonly IUserRepository _repository;
+        private readonly IPropertyRepository propertyRepository;
 
-        public UserService(IHttpContextAccessor httpContextAccessor, IUserRepository repository)
+        public UserService(IHttpContextAccessor httpContextAccessor, IUserRepository repository,IPropertyRepository propertyRepository)
         {
             this.httpContextAccessor = httpContextAccessor;
             _repository = repository;
+            this.propertyRepository = propertyRepository;
         }
 
         public async Task<ResponseStatus<PagedResponse<ResponseUserDto>>> GetListAsync(
-            User actor, UserListRequestDto request,
-            CancellationToken cancellationToken = default)
+      User actor,
+      UserListRequestDto request,
+      CancellationToken cancellationToken = default)
         {
-
-
-            var pageNumber = Math.Max(request.pg.PageNumber, 1);
-            var pageSize = Math.Clamp(request.pg.PageSize, 1, 100);
-            if (actor.PropertyId.HasValue && request.PropertyId.HasValue && actor.PropertyId != request.PropertyId)
+            if (actor is null)
             {
-                return new ResponseStatus<PagedResponse<ResponseUserDto>>(
-                    message: "The requested property is outside your scope.",
+                return Failer<PagedResponse<ResponseUserDto>>(
+                    message: "Authenticated actor is required.",
+                    statusCode: 401);
+            }
+
+            if (!actor.IsActive)
+            {
+                return Failer<PagedResponse<ResponseUserDto>>(
+                    message: "The actor is inactive.",
                     statusCode: 403);
             }
 
-            var effectivePropertyId = actor.PropertyId ?? request.PropertyId;
+            if (request is null)
+            {
+                return Failer<PagedResponse<ResponseUserDto>>(
+                    message: "User list request is required.",
+                    statusCode: 400);
+            }
+
+            var actorRoles = await _repository.GetRolesAsync(
+                actor.Id,
+                cancellationToken);
+
+            var isAdmin = HasActiveRole(actorRoles, UserRole.Admin);
+            var isManager = HasActiveRole(actorRoles, UserRole.Manager);
+
+            if (!isAdmin && !isManager)
+            {
+                return Failer<PagedResponse<ResponseUserDto>>(
+                    message: "Only Admin or Manager can retrieve the user list.",
+                    statusCode: 403);
+            }
+
+            int? effectivePropertyId;
+
+            if (isAdmin)
+            {
+                 effectivePropertyId = request.PropertyId;
+            }
+            else
+            {
+                if (!actor.PropertyId.HasValue)
+                {
+                    return Failer<PagedResponse<ResponseUserDto>>(
+                        message: "Manager is not assigned to a property.",
+                        statusCode: 403);
+                }
+
+                if (request.PropertyId.HasValue &&
+                    request.PropertyId.Value != actor.PropertyId.Value)
+                {
+                    return Failer<PagedResponse<ResponseUserDto>>(
+                        message: "The requested property is outside your scope.",
+                        statusCode: 403);
+                }
+
+                 effectivePropertyId = actor.PropertyId.Value;
+            }
+
+            var pageNumber = Math.Max(request.pg?.PageNumber ?? 1, 1);
+            var pageSize = Math.Clamp(request.pg?.PageSize ?? 20, 1, 100);
             var skip = (pageNumber - 1) * pageSize;
+
             var users = await _repository.GetListAsync(
                 request.UserName?.Trim(),
                 request.FullName?.Trim(),
@@ -64,6 +119,7 @@ namespace HotelHup.APPLICATION.services.implementation
                 skip,
                 pageSize,
                 cancellationToken);
+
             var totalCount = await _repository.CountAsync(
                 request.UserName?.Trim(),
                 request.FullName?.Trim(),
@@ -75,6 +131,7 @@ namespace HotelHup.APPLICATION.services.implementation
                 cancellationToken);
 
             var items = new List<ResponseUserDto>(users.Count);
+
             foreach (var user in users)
             {
                 items.Add(await MapAsync(user, cancellationToken));
@@ -87,25 +144,84 @@ namespace HotelHup.APPLICATION.services.implementation
                 PageSize = pageSize,
                 TotalCount = totalCount
             };
+
             return Success(data, "Users retrieved successfully.");
         }
 
+
         public async Task<ResponseStatus<ResponseUserDto>> GetByIdAsync(
-            User currentuser, string userId,
+            User currentuser,
+            string userId,
             CancellationToken cancellationToken = default)
         {
-            if (userId == null || string.IsNullOrWhiteSpace(userId))
+            if (currentuser is null)
             {
-                return Failer<ResponseUserDto>(message: "userid is empty", statusCode: 400);
-            }
-            var user = await _repository.GetByIdAsync(userId, cancellationToken);
-            if (currentuser is null || user is null || !await IsWithinScopeAsync(currentuser, user.PropertyId, cancellationToken))
-            {
-                return Failer<ResponseUserDto>(message: "User was not found.", statusCode: 404);
+                return Failer<ResponseUserDto>(
+                    message: "Authenticated actor is required.",
+                    statusCode: 401);
             }
 
-            return Success(await MapAsync(user, cancellationToken), "User retrieved successfully.");
+            if (!currentuser.IsActive)
+            {
+                return Failer<ResponseUserDto>(
+                    message: "The actor is inactive.",
+                    statusCode: 403);
+            }
+
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return Failer<ResponseUserDto>(
+                    message: "userid is empty",
+                    statusCode: 400);
+            }
+
+            var requestedUserId = userId.Trim();
+
+            var actorRoles = await _repository.GetRolesAsync(
+                currentuser.Id,
+                cancellationToken);
+
+            var isAdmin = HasActiveRole(actorRoles, UserRole.Admin);
+            var isManager = HasActiveRole(actorRoles, UserRole.Manager);
+
+             if (!isAdmin &&
+                !isManager &&
+                !string.Equals(
+                    currentuser.Id,
+                    requestedUserId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return Failer<ResponseUserDto>(
+                    message: "User was not found.",
+                    statusCode: 404);
+            }
+           
+
+            var user = await _repository.GetByIdAsync(
+                requestedUserId,
+                cancellationToken);
+
+            if (user is null)
+            {
+                return Failer<ResponseUserDto>(
+                    message: "User was not found.",
+                    statusCode: 404);
+            }
+
+             if (!isAdmin &&
+                isManager &&
+                user.PropertyId != currentuser.PropertyId)
+             {
+                return Failer<ResponseUserDto>(
+                    message: "manager is not in scope property.",
+                    statusCode: 403);
+             }
+
+            return Success(
+                await MapAsync(user, cancellationToken),
+                "User retrieved successfully.");
         }
+
 
         public async Task<ResponseStatus<ResponseUserDto>> CreateAsync(
           User user, CreateUserRequestDto request,
@@ -1120,6 +1236,18 @@ namespace HotelHup.APPLICATION.services.implementation
 
             return httpContext.TraceIdentifier;
         }
+        private static bool HasActiveRole(
+    IEnumerable<Role> roles,
+    UserRole expectedRole)
+        {
+            return roles.Any(role =>
+                role.IsActive &&
+                string.Equals(
+                    role.Name,
+                    expectedRole.ToString(),
+                    StringComparison.OrdinalIgnoreCase));
+        }
+
         private static string? ValidatePropertyRoleAssignment(
       int? propertyId,
       IReadOnlyList<Role> roles)

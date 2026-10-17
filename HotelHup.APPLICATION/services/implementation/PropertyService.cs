@@ -95,7 +95,7 @@ namespace HotelHup.APPLICATION.services.implementation
             int id,
             CancellationToken ct = default)
         {
-            var auth = await AuthorizeAsync(
+            var auth = await AuthorizescopepropertyAsync(
                 currentUserLogin.Id,
                 id,
                 ct);
@@ -955,6 +955,58 @@ namespace HotelHup.APPLICATION.services.implementation
 
             // Manager can access only his property
             if (!propertyId.HasValue ||
+                data.Actor.PropertyId.Value != propertyId.Value)
+            {
+                return new ResponseStatus<bool>(
+                    message: "You are not authorized to access this property.",
+                    statusCode: 403);
+            }
+
+            return new ResponseStatus<bool>(
+                data: true,
+                statusCode: 200);
+        }
+        private async Task<ResponseStatus<bool>> AuthorizescopepropertyAsync(
+      string actorId,
+      int? propertyId,
+      CancellationToken cancellationToken = default)
+        {
+            var result = await IsAdminAsync(
+                actorId,
+                cancellationToken);
+
+            if (!result.Success)
+            {
+                return new ResponseStatus<bool>(
+                    message: result.Message,
+                    statusCode: result.StatusCode);
+            }
+
+            if (result.Data is null)
+            {
+                return new ResponseStatus<bool>
+                    (message: "Authorization data not found.",
+                    statusCode: 403);
+            }
+            var data = result.Data;
+            // Admin → Global access
+            if (data.IsAdmin)
+            {
+                return new ResponseStatus<bool>
+                    (data: true,
+                    statusCode: 200);
+            }
+
+            
+
+             if (!data.Actor.PropertyId.HasValue)
+            {
+                return new ResponseStatus<bool>(
+                    message: "Manager is not assigned to a property.",
+                    statusCode: 403);
+            }
+
+             if (!propertyId.HasValue ||
                 data.Actor.PropertyId.Value != propertyId.Value)
             {
                 return new ResponseStatus<bool>(

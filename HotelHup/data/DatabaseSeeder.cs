@@ -48,7 +48,7 @@ public static class DatabaseSeeder
         Console.WriteLine($"Demo RoomId: {room.Id}");
         Console.WriteLine($"Demo ReservationId: {reservation.Id}");
         Console.WriteLine($"Demo FolioId: {reservation.Folio?.id}");
-    }
+    }    
 
     private static async Task SeedPermissionsAsync(
         hotelhupContext context,
@@ -128,7 +128,7 @@ public static class DatabaseSeeder
                 Permissions.Folios.AddCharge, Permissions.Folios.Transfer, Permissions.Folios.Close,
                 Permissions.Folios.Reopen,
                 Permissions.Payments.Read, Permissions.Payments.Create, Permissions.Payments.Void,
-                 Permissions.Refunds.Read, Permissions.Refunds.Create, Permissions.Refunds.Approve,
+                Permissions.Refunds.Read, Permissions.Refunds.Create, Permissions.Refunds.Approve,
                 Permissions.Services.Read, Permissions.Services.Create, Permissions.Services.Update,
                 Permissions.Services.Deactivate, Permissions.Services.AddToFolio,
                 Permissions.Housekeeping.Read, Permissions.Housekeeping.Assign,
@@ -138,10 +138,11 @@ public static class DatabaseSeeder
                 Permissions.Expenses.Void,
                 Permissions.Reports.Read, Permissions.Reports.Export, Permissions.AuditLogs.Read,
                 Permissions.Properties.Read, Permissions.Properties.Update,
-                
+                Permissions.Users.Read
             ],
             [UserRole.Receptionist.ToString()] =
-            [
+            [   
+                Permissions.Users.Read,
                 Permissions.Guests.Read, Permissions.Guests.Create, Permissions.Guests.Update,
                 Permissions.Reservations.Read, Permissions.Reservations.Create, Permissions.Reservations.Update,
                 Permissions.Reservations.Cancel, Permissions.Reservations.Modify,
@@ -149,16 +150,18 @@ public static class DatabaseSeeder
                 Permissions.RatePlans.Read,
                 Permissions.Folios.Read, Permissions.Folios.AddCharge,
                 Permissions.Services.Read, Permissions.Services.AddToFolio,
-                Permissions.Housekeeping.Read, Permissions.Housekeeping.ReportIssue
+                Permissions.Housekeeping.Read, Permissions.Housekeeping.ReportIssue,Permissions.Properties.Read,
             ],
             [UserRole.Housekeeper.ToString()] =
-            [
-                Permissions.Rooms.Read,
+            [                Permissions.Users.Read,
+
+                Permissions.Rooms.Read,Permissions.Properties.Read,
                 Permissions.Housekeeping.Read, Permissions.Housekeeping.Start,
                 Permissions.Housekeeping.Complete, Permissions.Housekeeping.ReportIssue
             ],
             [UserRole.Accountant.ToString()] =
-            [
+            [ 
+                Permissions.Properties.Read,
                 Permissions.Reservations.Read, Permissions.Guests.Read,
                 Permissions.Folios.Read, Permissions.Folios.Update, Permissions.Folios.Close,
                 Permissions.Folios.Reopen,
@@ -166,7 +169,9 @@ public static class DatabaseSeeder
                  Permissions.Refunds.Read, Permissions.Refunds.Create, Permissions.Refunds.Approve,
                 Permissions.Expenses.Read, Permissions.Expenses.Create, Permissions.Expenses.Update,
                 Permissions.Expenses.Void,
-                Permissions.Reports.Read, Permissions.Reports.Export
+                Permissions.Reports.Read, Permissions.Reports.Export,   
+                Permissions.Users.Read
+
             ],
           
            
