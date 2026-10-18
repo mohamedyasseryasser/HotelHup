@@ -378,7 +378,7 @@ namespace HotelHup.APPLICATION.services.implementation
                     (message: "Rate plans cannot be created under an inactive property.",
                     statusCode: 400);
             }
-            var roomType = await roomTypeRepository.GetByIdAsync(roomTypeId,false, ct);
+            var roomType = await roomTypeRepository.GetByIdAsync(roomTypeId,false,false, ct);
             if (roomType is null)
             {
                 return new ResponseStatus<bool>(message: "Room type was not found.", statusCode: 404);

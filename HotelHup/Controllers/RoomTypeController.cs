@@ -38,11 +38,11 @@ namespace HotelHup.API.Controllers
 
         [HttpGet("{id:int}")]
         [Authorize(Policy = Permissions.RoomTypes.Read)]
-        public async Task<IActionResult> Get(int id, CancellationToken ct)
+        public async Task<IActionResult> Get(int id, [FromQuery]bool includerooms,CancellationToken ct)
         {
             var current = await GetCurrentUserAsync();
             if (!current.Success || current.Data is null) return Result(current);
-            return Result(await _service.GetAsync(current.Data, id, ct));
+            return Result(await _service.GetAsync(current.Data, includerooms ,id, ct));
         }
 
         [HttpPost]
@@ -83,6 +83,14 @@ namespace HotelHup.API.Controllers
             var current = await GetCurrentUserAsync();
             if (!current.Success || current.Data is null) return Result(current);
             return Result(await _service.DeactivateAsync(current.Data, ifMatch, id, ct));
+        }
+        [HttpPost("{id:int}/activate")]
+        [Authorize(Policy = Permissions.RoomTypes.Activate)]
+        public async Task<IActionResult> Activate(int id, [FromHeader(Name = "If-Match")] string ifMatch, CancellationToken ct)
+        {
+            var current = await GetCurrentUserAsync();
+            if (!current.Success || current.Data is null) return Result(current);
+            return Result(await _service.ActivateAsync(current.Data, ifMatch, id, ct));
         }
         private async Task<ResponseStatus<User>> GetCurrentUserAsync()
         {

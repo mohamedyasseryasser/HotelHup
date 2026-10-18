@@ -31,25 +31,30 @@ namespace HotelHup.APPLICATION.services.implementation
             var property = await _rooms.GetPropertyAsync(propertyId.Value, ct);
             if (property is null) return Fail<PagedResponse<RoomListItemResponse>>("Property was not found.", 404);
             var result = await _rooms.GetListAsync(propertyId.Value, request.Search, request.IncludeInactive, request.PageNumber, request.PageSize, ct);
+
             return Ok(new PagedResponse<RoomListItemResponse>
             {
-                Items = result.Items
-         .Select(room => new RoomListItemResponse
-         {
-             Id = room.Id,
-             PropertyId = room.property_id,
-             RoomTypeId = room.RoomTypeId,
-             RoomNumber = room.RoomNumber,
-             Status = room.Status,
-             IsActive = room.IsActive,
-             PricePerNight = room.PricePerNight,
-             RowVersion = Convert.ToBase64String(room.RowVersion)
-         })
-         .ToList(),
                 PageNumber = request.PageNumber,
-                PageSize = request.PageSize, 
-                TotalCount = result.TotalCount
+                PageSize = request.PageSize,
+                TotalCount = result.TotalCount,
+                Items = result.Items
+             .Select(r => new RoomListItemResponse
+             {
+                 Id = r.Id,
+                 PropertyId = r.property_id,
+                 RoomTypeId = r.RoomTypeId,
+                 RoomNumber = r.RoomNumber,
+                 Status = r.Status,
+                 IsActive = r.IsActive,
+                 PricePerNight = r.PricePerNight,
+                 RowVersion = Convert.ToBase64String(
+                     r.RowVersion ?? Array.Empty<byte>())
+             })
+             .ToList()
             });
+
+
+
         }
 
         public async Task<ResponseStatus<RoomResponse>> GetAsync(User actor, int propertyId, int id, CancellationToken ct = default)
@@ -226,9 +231,48 @@ namespace HotelHup.APPLICATION.services.implementation
             }
         }
 
-       //-----------------------------------------------------------------------------------
-       //private method
-       //-----------------------------------------------------------------------------------
+        public async Task<ResponseStatus<RoomResponse>>
+            ActivateAsync(User actor,
+            int propertyId,
+            int id,
+            DeactivateRoomRequest request,
+            CancellationToken ct = default)
+        {
+            var auth = await AuthorizeAsync(actor, propertyId, ct);
+            if (!auth.Success)
+            {
+                return Fail<RoomResponse>(auth.Message, auth.StatusCode);
+            }
+            var room = await _rooms.GetByIdAsync(propertyId, id, true, ct);
+            if (room is null)
+            {
+                return Fail<RoomResponse>("Room was not found.", 404);
+            }
+            if (!TryDecode(request.ExpectedRowVersion, room, out var versionError))
+            {
+                return Fail<RoomResponse>(versionError!, 409);
+            }
+            if (room.IsActive)
+            {
+                return Fail<RoomResponse>("Room is already activate.", 400);
+            }
+            if (await _rooms.HasActiveReservationAsync(propertyId, id, ct))
+            {
+                return Fail<RoomResponse>("A room with an active reservation or stay cannot be deactivated.", 409);
+            }
+            var old = Map(room);
+            room.IsActive = true;
+            room.UpdatedAt = DateTimeOffset.UtcNow;
+            room.UpdatedBy = actor.Id;
+            try { await _rooms.PersistAsync(room, Audit(actor, propertyId, id.ToString(), "Deactivate", old, room)); return Ok(Map(room)); }
+            catch (DbUpdateConcurrencyException)
+            {
+                return Fail<RoomResponse>("The room was updated by another user.", 409);
+            }
+        }
+        //-----------------------------------------------------------------------------------
+        //private method
+        //-----------------------------------------------------------------------------------
         private async Task<ResponseStatus<bool>> AuthorizeAsync(User actor, int propertyId, CancellationToken ct)
         {
             if (actor is null)

@@ -132,6 +132,7 @@ public class Program
         builder.Services.AddScoped<IUserRepository, UserRepository>();
         builder.Services.AddScoped<IReservationRepository, ReservationRepository>();
         builder.Services.AddScoped<IRoomTypeRepository, RoomTypeRepository>();
+        builder.Services.AddScoped<IRoomRepository, RoomRepository>();
         builder.Services.AddScoped<IRatePlanRepository, RatePlanRepository>();
         builder.Services.AddScoped<IFolioRepository, FolioRepository>();
         builder.Services.AddScoped<IServiceRepository, ServiceRepository>();
@@ -150,6 +151,7 @@ public class Program
         builder.Services.AddScoped<IPropertyTax, PropertyTax>();
         builder.Services.AddScoped<ITokenService, TokenService>();
         builder.Services.AddScoped<IUserService, UserService>();
+        builder.Services.AddScoped<IRoomService, RoomService>();
         builder.Services.AddScoped<IRoomTypeService, RoomTypeService>();
         builder.Services.AddScoped<IRatePlanService, RatePlanService>();
         builder.Services.AddScoped<IFolioService, FolioService>();

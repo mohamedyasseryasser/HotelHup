@@ -68,6 +68,7 @@ namespace HotelHup.APPLICATION.Constant
             public const string Create = "RoomType.Create";
             public const string Update = "RoomType.Update";
             public const string Deactivate = "RoomType.Deactivate";
+            public const string Activate = "RoomType.Activate";
         }
 
  

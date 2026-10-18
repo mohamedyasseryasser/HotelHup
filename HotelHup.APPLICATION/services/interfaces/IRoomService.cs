@@ -17,6 +17,8 @@ namespace HotelHup.APPLICATION.services.interfaces
         Task<ResponseStatus<RoomResponse>> CreateAsync(User actor, int propertyId, CreateRoomRequest request, CancellationToken ct = default);
         Task<ResponseStatus<RoomResponse>> UpdateAsync(User actor, int propertyId, int id, UpdateRoomRequest request, CancellationToken ct = default);
         Task<ResponseStatus<RoomResponse>> DeactivateAsync(User actor, int propertyId, int id, DeactivateRoomRequest request, CancellationToken ct = default);
+        Task<ResponseStatus<RoomResponse>> ActivateAsync(User actor, int propertyId, int id, DeactivateRoomRequest request, CancellationToken ct = default);
+
     }
 
 }

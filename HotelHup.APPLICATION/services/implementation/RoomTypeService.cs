@@ -1,5 +1,6 @@
 ﻿using HotelHup.APPLICATION.DTO.aduitlog;
 using HotelHup.APPLICATION.DTO.General;
+using HotelHup.APPLICATION.DTO.room;
 using HotelHup.APPLICATION.DTO.RoomType;
 using HotelHup.APPLICATION.DTO.user;
 using HotelHup.APPLICATION.interfacesrepo;
@@ -40,9 +41,9 @@ namespace HotelHup.APPLICATION.services.implementation
             return Ok(rows.Select(Map).ToList());
         }
 
-        public async Task<ResponseStatus<RoomTypeResponse>> GetAsync(User actor, int id, CancellationToken ct = default)
+        public async Task<ResponseStatus<RoomTypeResponse>> GetAsync(User actor,bool includeroom ,int id, CancellationToken ct = default)
         {
-            var roomType = await _repository.GetByIdAsync(id, false, ct);
+            var roomType = await _repository.GetByIdAsync(id, includeroom,false, ct);
             if (roomType is null)
                 return Fail<RoomTypeResponse>("Room type was not found.", 404);
             //check actor must be manager or admin
@@ -54,7 +55,10 @@ namespace HotelHup.APPLICATION.services.implementation
 
         public async Task<ResponseStatus<RoomTypeResponse>> 
             CreateAsync(
-            User actor,int PropertyId, CreateRoomTypeRequest request, CancellationToken ct = default)
+            User actor,
+            int PropertyId,
+            CreateRoomTypeRequest request,
+            CancellationToken ct = default)
         {
             if (actor is null)
             {
@@ -97,11 +101,13 @@ namespace HotelHup.APPLICATION.services.implementation
                 CreatedAt = DateTimeOffset.UtcNow,
                 CreatedBy = actor.Id
             };
-            _ = roomType.Property;
+            var newSnapshot = Map(roomType);
+
+            //     _ = roomType.Property;
             try
             {
                 // The repository persists the tracked entity and its audit record atomically.
-                await _repository.SaveAsync(roomType, Audit(actor, roomType, "Create", null, roomType), ct);
+                await _repository.SaveAsync(roomType, Audit(actor, roomType, "Create", null, newSnapshot), ct);
                 return new ResponseStatus<RoomTypeResponse>(Map(roomType), statusCode: 201);
             }
             catch (DbUpdateConcurrencyException)
@@ -110,9 +116,10 @@ namespace HotelHup.APPLICATION.services.implementation
             }
         }
 
-        public async Task<ResponseStatus<RoomTypeResponse>> UpdateAsync(User actor, string expectedRowVersion, int id, UpdateRoomTypeRequest request, CancellationToken ct = default)
+        public async Task<ResponseStatus<RoomTypeResponse>> 
+            UpdateAsync(User actor, string expectedRowVersion, int id, UpdateRoomTypeRequest request, CancellationToken ct = default)
         {
-            var roomType = await _repository.GetByIdAsync(id, true, ct);
+            var roomType = await _repository.GetByIdAsync(id,false ,true, ct);
             if (roomType is null)
                 return Fail<RoomTypeResponse>("Room type was not found.", 404);
             //check actor must be manager or admin
@@ -135,9 +142,10 @@ namespace HotelHup.APPLICATION.services.implementation
             roomType.Description = request.Description;
             roomType.UpdatedAt = DateTimeOffset.UtcNow;
             roomType.UpdatedBy = actor.Id;
+            var newsnapshot = Map(roomType);
             try
             {
-                await _repository.SaveAsync(roomType, Audit(actor, roomType, "Update", old, roomType), ct);
+                await _repository.SaveAsync(roomType, Audit(actor, roomType, "Update", old, newsnapshot), ct);
                 return Ok(Map(roomType));
             }
             catch (DbUpdateConcurrencyException)
@@ -146,9 +154,11 @@ namespace HotelHup.APPLICATION.services.implementation
             }
         }
 
-        public async Task<ResponseStatus<RoomTypeResponse>> DeactivateAsync(User actor, string expectedRowVersion, int id, CancellationToken ct = default)
+        public async Task<ResponseStatus<RoomTypeResponse>>
+            DeactivateAsync(
+            User actor, string expectedRowVersion, int id, CancellationToken ct = default)
         {
-            var roomType = await _repository.GetByIdAsync(id, true, ct);
+            var roomType = await _repository.GetByIdAsync(id, false,true, ct);
             if (roomType is null)
                 return Fail<RoomTypeResponse>("Room type was not found.", 404);
             //check actor must be manager or admin
@@ -171,12 +181,39 @@ namespace HotelHup.APPLICATION.services.implementation
                 return Fail<RoomTypeResponse>("The room type was changed by another user.", 409);
             }
         }
+        public async Task<ResponseStatus<RoomTypeResponse>>
+          ActivateAsync(
+          User actor, string expectedRowVersion, int id, CancellationToken ct = default)
+        {
+            var roomType = await _repository.GetByIdAsync(id, false, true, ct);
+            if (roomType is null)
+                return Fail<RoomTypeResponse>("Room type was not found.", 404);
+            //check actor must be manager or admin
+            var auth = await AuthorizeAsync(actor.Id, id, ct);
+            if (!auth.Success)
+                return Fail<RoomTypeResponse>("You are not authorized to access this property.", 403);
+            if (!TrySetConcurrency(roomType, expectedRowVersion, out var error))
+                return Fail<RoomTypeResponse>(error!, 409);
+            var old = Map(roomType);
+            roomType.IsActive = true;
+            roomType.UpdatedAt = DateTimeOffset.UtcNow;
+            roomType.UpdatedBy = actor.Id;
+            try
+            {
+                await _repository.SaveAsync(roomType, Audit(actor, roomType, "Activate", old, roomType), ct);
+                return Ok(Map(roomType));
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                return Fail<RoomTypeResponse>("The room type was changed by another user.", 409);
+            }
+        }
         //-----------------------------------------------------------------------
         //private method
         //-----------------------------------------------------------------------
         private async Task<ResponseStatus<AuthorizationDataDto>> IsAdminAsync(
-    string actorId,
-    CancellationToken cancellationToken = default)
+           string actorId,
+        CancellationToken cancellationToken = default)
         {
             var actor = await userRepository.GetByIdAsync(
                 actorId,
@@ -277,9 +314,7 @@ namespace HotelHup.APPLICATION.services.implementation
                 statusCode: 200);
         }
 
-        private static bool CanAccessProperty(User actor, int? propertyId) =>
-            actor is not null && (!actor.PropertyId.HasValue || !propertyId.HasValue || actor.PropertyId == propertyId);
-
+ 
         private static List<string> ValidateValues(string name, int maxAdults, int maxChildren, decimal basePrice)
         {
             var errors = new List<string>();
@@ -310,17 +345,34 @@ namespace HotelHup.APPLICATION.services.implementation
             }
         }
 
-        private static AddAuditLogDto Audit(User actor, RoomType entity, string action, object? oldValues, object? newValues) => new()
+        private static AddAuditLogDto 
+            Audit(
+            User actor, 
+            RoomType entity,
+            string action,
+            object? oldValues,
+            object? newValues) => new()
         {
             userid = actor.Id,
             PropertyId = entity.property_id,
             TargetEntity = nameof(RoomType),
-            TargetEntityId = entity.Id.ToString(),
+            TargetEntityId = entity.Id.ToString() ?? "",
             Action = action,
             OldValues = oldValues,
             NewValues = newValues
         };
+        private static RoomResponse Map(Room x) => new()
+        {
 
+            Id = x.Id,
+            PricePerNight = x.PricePerNight,
+            PropertyId = x.property_id,
+            RoomTypeId = x.RoomTypeId,
+            RoomNumber = x.RoomNumber,
+            Status = x.Status,
+            IsActive = x.IsActive,
+            RowVersion = Convert.ToBase64String(x.RowVersion ?? Array.Empty<byte>())
+        };
         private static RoomTypeResponse Map(RoomType x) => new()
         {
             Id = x.Id,
@@ -331,9 +383,10 @@ namespace HotelHup.APPLICATION.services.implementation
             BasePrice = x.BasePrice,
             Description = x.Description,
             IsActive = x.IsActive,
-            RowVersion = Convert.ToBase64String(x.RowVersion ?? Array.Empty<byte>())
+            RowVersion = Convert.ToBase64String(x.RowVersion ?? Array.Empty<byte>()),
+            RoomResponses = x.Rooms.Select(r => Map(r)).ToArray() ?? Array.Empty<RoomResponse>()
         };
-
+      
         private static ResponseStatus<T> Ok<T>(T value) => new(value);
         private static ResponseStatus<T> Fail<T>(string message, int status, List<string>? errors = null) =>
             new(message: message, errors: errors, statusCode: status);

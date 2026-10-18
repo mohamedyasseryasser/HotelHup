@@ -27,9 +27,10 @@ namespace HotelHup.APPLICATION.DTO.room
         public RoomStatus Status { get; init; }
         public bool IsActive { get; init; }
         public decimal PricePerNight { get; set; }
-
         public string RowVersion { get; init; } = string.Empty;
     }
 
-    public sealed class RoomListItemResponse : RoomResponse { }
+    public sealed class RoomListItemResponse : RoomResponse
+    {
+     }
 }

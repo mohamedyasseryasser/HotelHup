@@ -1,4 +1,5 @@
-﻿using System;
+﻿using HotelHup.APPLICATION.DTO.room;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -18,6 +19,7 @@ namespace HotelHup.APPLICATION.DTO.RoomType
         public string? Description { get; init; }
         public bool IsActive { get; init; }
         public string RowVersion { get; init; } = string.Empty;
+        public ICollection<RoomResponse> RoomResponses { get; init; }=new List<RoomResponse>();
     }
 
 }

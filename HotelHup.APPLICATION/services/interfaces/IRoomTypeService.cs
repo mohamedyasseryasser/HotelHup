@@ -12,9 +12,11 @@ namespace HotelHup.APPLICATION.services.interfaces
     public interface IRoomTypeService
     {
         Task<ResponseStatus<List<RoomTypeResponse>>> GetAllAsync(User actor, RoomTypeListRequest request, CancellationToken ct = default);
-        Task<ResponseStatus<RoomTypeResponse>> GetAsync(User actor, int id, CancellationToken ct = default);
+        Task<ResponseStatus<RoomTypeResponse>> GetAsync(User actor,bool includeroom ,int id, CancellationToken ct = default);
         Task<ResponseStatus<RoomTypeResponse>> CreateAsync(User actor, int propertyid,CreateRoomTypeRequest request, CancellationToken ct = default);
         Task<ResponseStatus<RoomTypeResponse>> UpdateAsync(User actor, string expectedRowVersion, int id, UpdateRoomTypeRequest request, CancellationToken ct = default);
         Task<ResponseStatus<RoomTypeResponse>> DeactivateAsync(User actor, string expectedRowVersion, int id, CancellationToken ct = default);
+        Task<ResponseStatus<RoomTypeResponse>> ActivateAsync(User actor, string expectedRowVersion, int id, CancellationToken ct = default);
+
     }
 }

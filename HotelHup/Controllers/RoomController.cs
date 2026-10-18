@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+using System.Threading.Tasks;
 
 namespace HotelHup.API.Controllers
 {
@@ -30,7 +31,7 @@ namespace HotelHup.API.Controllers
             }
             return Result(await _service.GetListAsync(current.Data, request, ct));
         }
-
+   
         [HttpGet("{id:int}")]
         [Authorize(Policy = Permissions.Rooms.Read)]
         public async Task<IActionResult> Get(int id, [FromQuery] int propertyId, CancellationToken ct)
@@ -79,6 +80,14 @@ namespace HotelHup.API.Controllers
             var invalid = ValidateModelState(); if (invalid is not null) return invalid;
             var current = await CurrentUserAsync(); if (!current.Success || current.Data is null) return Result(current);
             return Result(await _service.DeactivateAsync(current.Data, propertyId, id, request, ct));
+        }
+        [HttpPost("{id:int}/Activate")]
+        [Authorize(Policy = Permissions.Rooms.Update)]
+        public async Task<IActionResult> Activate(int id, [FromQuery] int propertyId, DeactivateRoomRequest request, CancellationToken ct)
+        {
+            var invalid = ValidateModelState(); if (invalid is not null) return invalid;
+            var current = await CurrentUserAsync(); if (!current.Success || current.Data is null) return Result(current);
+            return Result(await _service.ActivateAsync(current.Data, propertyId, id, request, ct));
         }
 
         private async Task<ResponseStatus<User>> CurrentUserAsync()
