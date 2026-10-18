@@ -1,5 +1,6 @@
 ﻿using HotelHup.APPLICATION.DTO.General;
 using HotelHup.APPLICATION.DTO.room;
+using HotelHup.APPLICATION.DTO.user;
 using HotelHup.APPLICATION.interfacesrepo;
 using HotelHup.APPLICATION.services.interfaces;
 using HotelHup.CORE.Entities;
@@ -12,10 +13,10 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
-namespace HotelHup.APPLICATION.services.implementation
+namespace HotelHup.APPLICATION.services.implementation        
 {
 
-    public sealed class RoomService : IRoomService
+    public sealed class RoomService : IRoomService                           
     {
         private readonly IUserRepository _users;
         private readonly IRoomRepository _rooms;
@@ -57,7 +58,8 @@ namespace HotelHup.APPLICATION.services.implementation
 
         }
 
-        public async Task<ResponseStatus<RoomResponse>> GetAsync(User actor, int propertyId, int id, CancellationToken ct = default)
+        public async Task<ResponseStatus<RoomResponse>>
+            GetAsync(User actor, int propertyId, int id, CancellationToken ct = default)
         {
             var auth = await AuthorizeAsync(actor, propertyId, ct);
             if (!auth.Success)
@@ -273,20 +275,107 @@ namespace HotelHup.APPLICATION.services.implementation
         //-----------------------------------------------------------------------------------
         //private method
         //-----------------------------------------------------------------------------------
-        private async Task<ResponseStatus<bool>> AuthorizeAsync(User actor, int propertyId, CancellationToken ct)
+        private async Task<ResponseStatus<AuthorizationDataDto>> IsAdminAsync(
+          string actorId,
+       CancellationToken cancellationToken = default)
         {
+            var actor = await _users.GetByIdAsync(
+                actorId,
+                cancellationToken);
+
             if (actor is null)
             {
-                return Fail<bool>("User is not authenticated.", 401);
+                return new ResponseStatus<AuthorizationDataDto>(
+                    message: "User not found.",
+                    statusCode: 404);
             }
-            var roles = await _users.GetRolesAsync(actor.Id, ct);
-            if (roles.Any(x => x.IsActive && string.Equals(x.Name, nameof(UserRole.Admin), StringComparison.OrdinalIgnoreCase))) 
-                return Ok(true);
-            if (!roles.Any(x => x.IsActive && string.Equals(x.Name, nameof(UserRole.Manager), StringComparison.OrdinalIgnoreCase)))
-                return Fail<bool>("Admin or Manager access required.", 403);
-            if (!actor.PropertyId.HasValue || actor.PropertyId.Value != propertyId) 
-                return Fail<bool>("You are not authorized to access this property.", 403);
-            return Ok(true);
+
+            var roles = await _users.GetRolesAsync(
+                actor.Id,
+                cancellationToken);
+
+            var isAdmin = roles.Any(role =>
+                role.IsActive &&
+                string.Equals(
+                    role.Name,
+                    nameof(UserRole.Admin),
+                    StringComparison.OrdinalIgnoreCase));
+
+            return new ResponseStatus<AuthorizationDataDto>(
+                data: new AuthorizationDataDto
+                {
+                    Actor = actor,
+                    Roles = roles,
+                    IsAdmin = isAdmin
+                },
+                statusCode: 200);
+        }
+        private async Task<ResponseStatus<bool>> AuthorizeAsync(
+       User actor,
+       int? propertyId,
+       CancellationToken cancellationToken = default)
+        {
+            var result = await IsAdminAsync(
+                actor.Id,
+                cancellationToken);
+
+            if (!result.Success)
+            {
+                return new ResponseStatus<bool>(
+                    message: result.Message,
+                    statusCode: result.StatusCode);
+            }
+
+            if (result.Data is null)
+            {
+                return new ResponseStatus<bool>
+                    (message: "Authorization data not found.",
+                    statusCode: 403);
+            }
+            var data = result.Data;
+            // Admin → Global access
+            if (data.IsAdmin)
+            {
+                return new ResponseStatus<bool>
+                    (data: true,
+                    statusCode: 200);
+            }
+
+            // Check Manager
+            //    var isManager = data.Roles.Any(role =>
+            //      role.IsActive &&
+            //    string.Equals(
+            //      role.Name,
+            //    nameof(UserRole.Manager),
+            //  StringComparison.OrdinalIgnoreCase));
+
+            //   if (!isManager)
+            // {
+            //   return new ResponseStatus<bool>(
+            //     message: "Admin or Manager access required.",
+            //   statusCode: 403);
+            //}
+
+            // Manager must belong to a property
+            if (!data.Actor.PropertyId.HasValue)
+            {
+                return new ResponseStatus<bool>(
+                    message: "Manager is not assigned to a property.",
+                    statusCode: 403);
+            }
+
+            // Manager can access only his property
+            if (!propertyId.HasValue ||
+                data.Actor.PropertyId.Value != propertyId.Value)
+            {
+                return new ResponseStatus<bool>(
+                    message: "You are not authorized to access this property.",
+                    statusCode: 403);
+            }
+
+            return new ResponseStatus<bool>(
+                data: true,
+                statusCode: 200);
         }
 
         private static bool TryDecode(string expected, Room room, out string? error)

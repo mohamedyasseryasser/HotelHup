@@ -30,10 +30,14 @@ namespace HotelHup.APPLICATION.services.implementation
             _repository = repository;
         }
 
-        public async Task<ResponseStatus<List<RoomTypeResponse>>> GetAllAsync(User actor, RoomTypeListRequest request, CancellationToken ct = default)
+        public async Task<ResponseStatus<List<RoomTypeResponse>>> 
+            GetAllAsync(
+            User actor,
+            RoomTypeListRequest request,
+            CancellationToken ct = default)
         {
-            //check actor must be   admin
-            var auth = await IsAdminAsync(actor.Id, ct);
+            
+            var auth = await AuthorizeAsync(actor.Id, request.PropertyId ,ct);
             if (!auth.Success)
                 return Fail<List<RoomTypeResponse>>("You are not authorized to access this property.", 403);
 
@@ -41,13 +45,13 @@ namespace HotelHup.APPLICATION.services.implementation
             return Ok(rows.Select(Map).ToList());
         }
 
-        public async Task<ResponseStatus<RoomTypeResponse>> GetAsync(User actor,bool includeroom ,int id, CancellationToken ct = default)
+        public async Task<ResponseStatus<RoomTypeResponse>>
+            GetAsync(User actor,bool includeroom ,int id, CancellationToken ct = default)
         {
             var roomType = await _repository.GetByIdAsync(id, includeroom,false, ct);
             if (roomType is null)
                 return Fail<RoomTypeResponse>("Room type was not found.", 404);
-            //check actor must be manager or admin
-            var auth = await AuthorizeAsync(actor.Id, id, ct);
+             var auth = await AuthorizeAsync(actor.Id, id, ct);
             if (!auth.Success)
                 return Fail<RoomTypeResponse>("You are not authorized to access this property.", 403);
             return Ok(Map(roomType));
@@ -278,19 +282,19 @@ namespace HotelHup.APPLICATION.services.implementation
             }
 
             // Check Manager
-            var isManager = data.Roles.Any(role =>
-                role.IsActive &&
-                string.Equals(
-                    role.Name,
-                    nameof(UserRole.Manager),
-                    StringComparison.OrdinalIgnoreCase));
+        //    var isManager = data.Roles.Any(role =>
+          //      role.IsActive &&
+            //    string.Equals(
+              //      role.Name,
+                //    nameof(UserRole.Manager),
+                  //  StringComparison.OrdinalIgnoreCase));
 
-            if (!isManager)
-            {
-                return new ResponseStatus<bool>(
-                    message: "Admin or Manager access required.",
-                    statusCode: 403);
-            }
+         //   if (!isManager)
+           // {
+             //   return new ResponseStatus<bool>(
+               //     message: "Admin or Manager access required.",
+                 //   statusCode: 403);
+            //}
 
             // Manager must belong to a property
             if (!data.Actor.PropertyId.HasValue)
