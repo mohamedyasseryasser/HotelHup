@@ -18,9 +18,10 @@ namespace HotelHup.APPLICATION.services.implementation
 
     public sealed class RoomService : IRoomService                           
     {
+        private readonly IPropertyRepository propertyRepository;
         private readonly IUserRepository _users;
         private readonly IRoomRepository _rooms;
-        public RoomService(IUserRepository users, IRoomRepository rooms) { _users = users; _rooms = rooms; }
+        public RoomService(IPropertyRepository propertyRepository,IUserRepository users, IRoomRepository rooms) { this.propertyRepository = propertyRepository; _users = users; _rooms = rooms; }
 
         public async Task<ResponseStatus<PagedResponse<RoomListItemResponse>>>
             GetListAsync(User actor, RoomListRequest request, CancellationToken ct = default)
@@ -341,21 +342,11 @@ namespace HotelHup.APPLICATION.services.implementation
                     statusCode: 200);
             }
 
-            // Check Manager
-            //    var isManager = data.Roles.Any(role =>
-            //      role.IsActive &&
-            //    string.Equals(
-            //      role.Name,
-            //    nameof(UserRole.Manager),
-            //  StringComparison.OrdinalIgnoreCase));
-
-            //   if (!isManager)
-            // {
-            //   return new ResponseStatus<bool>(
-            //     message: "Admin or Manager access required.",
-            //   statusCode: 403);
-            //}
-
+            var property = await _rooms.GetPropertyAsync(propertyId.Value, cancellationToken);
+            if (property is null)
+            {
+                return new ResponseStatus<bool>( message:"Property was not found.",statusCode: 404);
+            }
             // Manager must belong to a property
             if (!data.Actor.PropertyId.HasValue)
             {

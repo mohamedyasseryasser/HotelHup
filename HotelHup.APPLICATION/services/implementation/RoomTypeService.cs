@@ -14,6 +14,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static HotelHup.APPLICATION.Constant.Permissions;
 
 namespace HotelHup.APPLICATION.services.implementation
 {
@@ -21,11 +22,13 @@ namespace HotelHup.APPLICATION.services.implementation
 
     public sealed class RoomTypeService : IRoomTypeService
     {
+        private readonly IRoomRepository room;
         private readonly IUserRepository userRepository;
         private readonly IRoomTypeRepository _repository;
 
-        public RoomTypeService(IUserRepository userRepository,IRoomTypeRepository repository)
+        public RoomTypeService(IRoomRepository room,IUserRepository userRepository,IRoomTypeRepository repository)
         {
+            this.room = room;
             this.userRepository = userRepository;
             _repository = repository;
         }
@@ -51,7 +54,7 @@ namespace HotelHup.APPLICATION.services.implementation
             var roomType = await _repository.GetByIdAsync(id, includeroom,false, ct);
             if (roomType is null)
                 return Fail<RoomTypeResponse>("Room type was not found.", 404);
-             var auth = await AuthorizeAsync(actor.Id, id, ct);
+             var auth = await AuthorizeAsync(actor.Id, roomType.property_id, ct);
             if (!auth.Success)
                 return Fail<RoomTypeResponse>("You are not authorized to access this property.", 403);
             return Ok(Map(roomType));
@@ -266,7 +269,7 @@ namespace HotelHup.APPLICATION.services.implementation
                     statusCode: result.StatusCode);
             }
 
-            if (result.Data is null)
+            if (result.Data is null )
             {
                 return new ResponseStatus<bool>
                     (message: "Authorization data not found.",
@@ -281,26 +284,17 @@ namespace HotelHup.APPLICATION.services.implementation
                     statusCode: 200);
             }
 
-            // Check Manager
-        //    var isManager = data.Roles.Any(role =>
-          //      role.IsActive &&
-            //    string.Equals(
-              //      role.Name,
-                //    nameof(UserRole.Manager),
-                  //  StringComparison.OrdinalIgnoreCase));
-
-         //   if (!isManager)
-           // {
-             //   return new ResponseStatus<bool>(
-               //     message: "Admin or Manager access required.",
-                 //   statusCode: 403);
-            //}
+            var property = await  room.GetPropertyAsync(propertyId.Value, cancellationToken);
+            if (property is null)
+            {
+                return new ResponseStatus<bool>(message: "Property was not found.", statusCode: 404);
+            }
 
             // Manager must belong to a property
             if (!data.Actor.PropertyId.HasValue)
             {
                 return new ResponseStatus<bool>(
-                    message: "Manager is not assigned to a property.",
+                    message: "actor is not assigned to a property.",
                     statusCode: 403);
             }
 
