@@ -2,6 +2,7 @@
 using HotelHup.CORE.Entities;
 using HotelHup.INFRASTRUCTURE.Context;
 using Microsoft.EntityFrameworkCore;
+using static HotelHup.APPLICATION.Constant.Permissions;
 
 namespace HotelHup.INFRASTRUCTURE.repos
 {
@@ -23,11 +24,12 @@ namespace HotelHup.INFRASTRUCTURE.repos
                 .SingleOrDefaultAsync(user => user.Id == userId, cancellationToken);
         }
 
-        public Task<User?> GetUserForLoginAsync(
+        public async Task<User?> GetUserForLoginAsync(
             string normalizedUserName,
             CancellationToken cancellationToken = default)
         {
-            return _context.Users
+             
+             return await _context.Users
                 .SingleOrDefaultAsync(user => user.NormalizedUserName == normalizedUserName, cancellationToken);
         }
 

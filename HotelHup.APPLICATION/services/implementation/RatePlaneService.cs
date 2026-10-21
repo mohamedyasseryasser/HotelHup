@@ -247,7 +247,8 @@ namespace HotelHup.APPLICATION.services.implementation
         }
         
 
-        public async Task<ResponseStatus<RatePlanVersionResponse>> GetVersionAsync(User actor, int id, int versionNumber, CancellationToken ct = default)
+        public async Task<ResponseStatus<RatePlanVersionResponse>> 
+            GetVersionAsync(User actor, int id, int versionNumber, CancellationToken ct = default)
         {
             var plan = await _repository.GetByIdAsync(id, false, ct);
             if (plan is null) return Fail<RatePlanVersionResponse>("Rate plan was not found.", 404);
@@ -329,6 +330,103 @@ namespace HotelHup.APPLICATION.services.implementation
             var old = Map(plan);
 
             plan.IsActive = false;
+            plan.UpdatedAt = DateTimeOffset.UtcNow;
+            plan.UpdatedBy = actor.Id;
+
+            try
+            {
+                await _repository.PersistAsync(
+                    plan,
+                    null,
+                    Audit(
+                        actor,
+                        plan,
+                        "Deactivate",
+                        old,
+                        Map(plan)),
+                    ct);
+
+                return Ok(Map(plan));
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                return Fail<RatePlanResponse>(
+                    "The rate plan was changed by another user.",
+                    409);
+            }
+        }
+
+        public async Task<ResponseStatus<RatePlanResponse>>
+         ActivateAsync(
+             User actor,
+             string expectedRowVersion,
+             int id,
+             CancellationToken ct = default)
+        {
+            var plan =
+                await _repository.GetByIdAsync(
+                    id,
+                    true,
+                    ct);
+
+            if (plan is null)
+            {
+                return Fail<RatePlanResponse>(
+                    "Rate plan was not found.",
+                    404);
+            }
+
+            var property =
+                await propertyRepository.GetByIdAsync(
+                    plan.PropertyId,
+                    ct);
+
+            if (property is null)
+            {
+                return Fail<RatePlanResponse>(
+                    "Property was not found.",
+                    404);
+            }
+
+            if (property.Status == PropertyStatus.Inactive)
+            {
+                return Fail<RatePlanResponse>(
+                    "Rate plans cannot be deactivated under an inactive property.",
+                    400);
+            }
+
+            var auth =
+                await AuthorizeAsync(
+                    actor.Id,
+                    plan.PropertyId,
+                    ct);
+
+            if (!auth.Success)
+            {
+                return Fail<RatePlanResponse>(
+                    auth.Message,
+                    auth.StatusCode);
+            }
+
+            if (!CheckRowVersion(
+                    expectedRowVersion,
+                    plan.RowVersion))
+            {
+                return Fail<RatePlanResponse>(
+                    "Concurrency conflict.",
+                    409);
+            }
+
+            if (!plan.IsActive)
+            {
+                return Fail<RatePlanResponse>(
+                    "Rate plan is already inactive.",
+                    400);
+            }
+
+            var old = Map(plan);
+
+            plan.IsActive = true;
             plan.UpdatedAt = DateTimeOffset.UtcNow;
             plan.UpdatedBy = actor.Id;
 

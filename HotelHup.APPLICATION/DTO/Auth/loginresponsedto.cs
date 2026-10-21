@@ -13,5 +13,8 @@ namespace HotelHup.APPLICATION.DTO.Auth
         public string RefreshToken { get; init; } = string.Empty;
         public DateTime AccessTokenExpiresAtUtc { get; init; }
         public ResponseUserDto User { get; init; } = null!;
+        public IReadOnlyCollection<string> Permissions { get; init; }
+          = Array.Empty<string>();
+
     }
 }

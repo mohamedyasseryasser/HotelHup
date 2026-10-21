@@ -99,10 +99,19 @@ namespace HotelHup.API.Controllers
         [HttpPost("{id:int}/deactivate")]
         [Authorize(Policy = Permissions.RatePlans.Deactivate)]
         public async Task<IActionResult> Deactivate(
-  int id,
+          int id,
     [FromHeader(Name = "If-Match")] string? ifMatch,
     CancellationToken ct)
         { var u = await Current(); if (!u.Success || u.Data is null) return Result(u); return Result(await _service.DeactivateAsync(u.Data, ifMatch, id, ct)); }
+
+        [HttpPost("{id:int}/activate")]
+        [Authorize(Policy = Permissions.RatePlans.Activate)]
+
+        public async Task<IActionResult> Activate(
+        int id,
+         [FromHeader(Name = "If-Match")] string? ifMatch,
+          CancellationToken ct)
+        { var u = await Current(); if (!u.Success || u.Data is null) return Result(u); return Result(await _service.ActivateAsync(u.Data, ifMatch, id, ct)); }
 
         private async Task<ResponseStatus<User>> Current()
         {

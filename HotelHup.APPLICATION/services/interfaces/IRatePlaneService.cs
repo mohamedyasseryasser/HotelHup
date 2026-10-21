@@ -19,6 +19,9 @@ namespace HotelHup.APPLICATION.services.interfaces
         Task<ResponseStatus<List<RatePlanVersionResponse>>> GetVersionsAsync(User actor, int id, CancellationToken ct = default);
         Task<ResponseStatus<RatePlanVersionResponse>> GetVersionAsync(User actor, int id, int versionNumber, CancellationToken ct = default);
         Task<ResponseStatus<RatePlanResponse>> DeactivateAsync(User actor, string expectedRowVersion, int id, CancellationToken ct = default);
+        Task<ResponseStatus<RatePlanResponse>> ActivateAsync(User actor, string expectedRowVersion, int id, CancellationToken ct = default);
+
+
     }
 
 }

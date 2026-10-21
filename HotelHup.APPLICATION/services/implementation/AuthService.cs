@@ -12,15 +12,17 @@ namespace HotelHup.APPLICATION.services.implementation
     {
         private const string InvalidCredentialsMessage = "Invalid username or password.";
         private const string InvalidRefreshTokenMessage = "Invalid or expired refresh token.";
+        private readonly IUserRepository userRepository;
         private readonly IAuthRepository _repository;
         private readonly ITokenService _tokenService;
         private readonly UserManager<User> _userManager;
 
-        public AuthService(
+        public AuthService(IUserRepository userRepository,
             IAuthRepository repository,
             ITokenService tokenService,
             UserManager<User> userManager)
         {
+            this.userRepository = userRepository;
             _repository = repository;
             _tokenService = tokenService;
             _userManager = userManager;
@@ -61,14 +63,23 @@ namespace HotelHup.APPLICATION.services.implementation
 
             await _userManager.ResetAccessFailedCountAsync(user);
             var roles = (await _userManager.GetRolesAsync(user)).ToArray();
+            var permissions =
+            await userRepository.GetPermissionNamesAsync(
+                user.Id,
+                cancellationToken);
             var tokenPairs = await _tokenService.CreateTokenPairAsync(user, roles, cancellationToken);
             await _repository.PersistRefreshTokenAsync(tokenPairs.RefreshTokenEntity, cancellationToken);
             await _repository.AddAuthenticationAuditAsync(user, "Login Success", cancellationToken);
 
             return new ResponseStatus<LoginResponseDto>(
-                ToResponse(tokenPairs, user, roles),
-            message:    "Login successful.",
-                statusCode:200);
+                 ToResponse(
+                     tokenPairs,
+                     user,
+                     roles,
+                     permissions),
+                 message: "Login successful.",
+                 statusCode: 200);
+        
         }
 
         public async Task<ResponseStatus<LoginResponseDto>> RefreshAsync(
@@ -88,6 +99,10 @@ namespace HotelHup.APPLICATION.services.implementation
             }
 
             var roles = (await _userManager.GetRolesAsync(storedToken.User)).ToArray();
+            var permissions =
+              await userRepository.GetPermissionNamesAsync(
+                  storedToken.User.Id,
+                  cancellationToken);
             var replacement = await _tokenService.CreateTokenPairAsync(storedToken.User, roles, cancellationToken);
             var rotated = await _repository.RotateRefreshTokenAsync(
                 storedToken.Id,
@@ -102,7 +117,7 @@ namespace HotelHup.APPLICATION.services.implementation
             await _repository.AddAuthenticationAuditAsync(storedToken.User, "Refresh", cancellationToken);
 
             return new ResponseStatus<LoginResponseDto>(
-                ToResponse(replacement, storedToken.User, roles),
+                ToResponse(replacement, storedToken.User, roles, permissions),
                 message:"Token refreshed successfully.",
          statusCode:       200);
         }
@@ -125,17 +140,21 @@ namespace HotelHup.APPLICATION.services.implementation
             await _repository.RevokeRefreshTokensAsync(user.Id, cancellationToken);
             return new ResponseStatus<bool>(true, message:"Logout successful.",statusCode: 200);
         }
-
         private static LoginResponseDto ToResponse(
-            TokenPair tokenPair,
-            User user,
-            IReadOnlyCollection<string> roles)
+                  TokenPair tokenPair,
+                  User user,
+                  IReadOnlyCollection<string> roles,
+                  IReadOnlyCollection<string> permissions)
         {
             return new LoginResponseDto
             {
                 AccessToken = tokenPair.AccessToken,
                 RefreshToken = tokenPair.RefreshToken,
-                AccessTokenExpiresAtUtc = tokenPair.AccessTokenExpiresAtUtc,
+                AccessTokenExpiresAtUtc =
+                    tokenPair.AccessTokenExpiresAtUtc,
+
+                Permissions = permissions,
+
                 User = new ResponseUserDto
                 {
                     UserId = user.Id,
@@ -146,8 +165,15 @@ namespace HotelHup.APPLICATION.services.implementation
                     IsActive = user.IsActive,
                     CreatedAt = user.CreatedAt,
                     UpdatedAt = user.UpdatedAt,
-                    Roles = roles.Select(role => new ResponseRoleDto { RoleName = role, isactive = true }).ToArray()
-                }
+
+                    Roles = roles
+                        .Select(role => new ResponseRoleDto
+                        {
+                            RoleName = role,
+                            isactive = true,
+                        })
+                        .ToArray(),
+                },
             };
         }
 
