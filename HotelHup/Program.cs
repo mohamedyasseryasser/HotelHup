@@ -136,6 +136,7 @@ public class Program
         builder.Services.AddScoped<IRatePlanRepository, RatePlanRepository>();
         builder.Services.AddScoped<IFolioRepository, FolioRepository>();
         builder.Services.AddScoped<IServiceRepository, ServiceRepository>();
+        builder.Services.AddScoped<IGuestRepository, GuestRepository>();
         // Application Services
         builder.Services.AddScoped<IAuthService, AuthService>();
 
@@ -158,7 +159,7 @@ public class Program
         builder.Services.AddScoped<IServiceService, ServiceService>();
         builder.Services.AddScoped<IReservationService, ReservationService>();
         builder.Services.AddScoped<ISystemActorProvider, SystemActorProvider>();
-       
+        builder.Services.AddScoped<IGuestService, GuestService>();
         builder.Services.AddCors(options =>
             options.AddPolicy(
                 "AngularPolicy",
