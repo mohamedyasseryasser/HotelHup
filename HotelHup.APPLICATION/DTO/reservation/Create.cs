@@ -14,6 +14,23 @@ public sealed class AvailabilityRequest
     public int? RoomTypeId { get; init; }
     public int? ExcludedReservationId { get; init; }
 }
+public sealed class ExtendCheckoutRequest
+{
+    [Required]
+    public DateTime NewCheckOutDate { get; init; }
+
+    [MaxLength(1000)]
+    public string? Reason { get; init; }
+}
+
+public sealed class EarlyCheckoutRequest
+{
+    public DateTime? CheckOutDate { get; init; } = DateTime.Now;
+    public bool ManagerOverride { get; init; }
+
+    [MaxLength(1000)]
+    public string? Notes { get; init; }
+}
 
 public sealed class AvailabilityItemResponse
 {
@@ -36,10 +53,17 @@ public sealed class CreateReservationRequest
     public BookingSource Source { get; init; } = BookingSource.Direct;
       public ICollection<CreateReservationRoomRequest> createReservationRoomRequests { get; init; }
         = new List<CreateReservationRoomRequest>();
-    public int? CancellationPolicyId { get; init; }
-    public int? CancellationPolicyVersionId { get; init; }
-    public int? DepositPolicyId { get; init; }
-    public int? DepositPolicyVersionId { get; init; }
+    [Range(1, int.MaxValue)]
+    public int CancellationPolicyId { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int CancellationPolicyVersionId { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int DepositPolicyId { get; init; }
+
+    [Range(1, int.MaxValue)]
+    public int DepositPolicyVersionId { get; init; }
     [MaxLength(1000)] public string? Notes { get; init; }
 }
 public sealed class CreateReservationRoomRequest
@@ -63,7 +87,7 @@ public sealed class UpdateReservationRequest
     public DateTime? CheckInDate { get; init; }
     public DateTime? CheckOutDate { get; init; }
     [Range(1, 20)] public int? Adults { get; init; }
-    [Range(0, 20)] public int? Children { get; init; }
+    [Range(0, 20)] public int? Children { get; init; }             
     public int? GuestId { get; init; }
     public int? RoomId { get; init; }
     public int? RoomTypeId { get; init; }

@@ -19,7 +19,11 @@ public sealed class ReservationRepository : IReservationRepository
     public Task<Guest?> GetGuestAsync(int propertyId, int guestId, CancellationToken ct = default) =>
         _context.Guests.AsNoTracking().SingleOrDefaultAsync(x => x.propertyid == propertyId && x.Id == guestId, ct);
 
-    public Task<Room?> GetRoomAsync(int propertyId, int roomId, bool tracking, CancellationToken ct = default)
+    public Task<Room?> GetRoomAsync(
+        int propertyId,
+        int roomId,
+        bool tracking,
+        CancellationToken ct = default)
     {
         IQueryable<Room> query = _context.Rooms
             .Include(x => x.RoomType)
@@ -43,7 +47,13 @@ public sealed class ReservationRepository : IReservationRepository
         return await query.OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
     }
 
-    public Task<CancellationPolicyVersion?> GetCancellationPolicyVersionAsync(int propertyId, int policyId, int? versionId, DateTimeOffset stayDate, CancellationToken ct = default)
+    public Task<CancellationPolicyVersion?> 
+        GetCancellationPolicyVersionAsync(
+        int propertyId,
+        int policyId,
+        int? versionId,
+        DateTimeOffset stayDate,
+        CancellationToken ct = default)
     {
         var query = _context.cancellationPolicyVersions.AsNoTracking().Include(x => x.CancellationPolicy)
             .Where(x => x.CancellationPolicy != null && x.CancellationPolicy.PropertyId == propertyId &&
@@ -101,25 +111,58 @@ public sealed class ReservationRepository : IReservationRepository
                         !occupiedRoomIds.Contains(x.Id)).OrderBy(x => x.RoomNumber).ToListAsync(ct);
     }
 
-    public async Task<Reservation?> GetByIdAsync(int propertyId, int id, bool tracking, CancellationToken ct = default)
+    public async Task<Reservation?> GetByIdAsync(
+        int propertyId,
+        int id,
+        bool tracking,
+        CancellationToken ct = default)
     {
-        IQueryable<Reservation> query = _context.Reservations.Include(r=>r.Property).ThenInclude(p=>p.Settings)
-            .Include(x => x.Guest)
-            .Include(x => x.ReservationRooms).ThenInclude(x => x.Room)
-            .Include(x => x.ReservationRooms).ThenInclude(x => x.RatePlanSnapshot)
-            .Include(x => x.StatusHistory)
-            .Include(x => x.Folio).ThenInclude(x => x!.Items)
-            .Include(x => x.Folio).ThenInclude(x => x!.Payments).ThenInclude(x => x.Refunds)
-            .Include(x => x.CancellationPolicySnapshot)
-            .Include(x => x.DepositPolicySnapshot)
-            .Where(x => x.PropertyId == propertyId && x.Id == id);
-        if (!tracking) query = query.AsNoTracking();
+        IQueryable<Reservation> query =
+            _context.Reservations
+                .Include(x => x.Property)
+                    .ThenInclude(x => x.Settings)
+
+                .Include(x => x.Guest)
+
+                .Include(x => x.ReservationRooms)
+                    .ThenInclude(x => x.Room)
+
+                .Include(x => x.ReservationRooms)
+                    .ThenInclude(x => x.RatePlanSnapshot)
+
+                
+                 .Include(x => x.ReservationTaxSnapshots)
+
+                .Include(x => x.StatusHistory)
+
+                .Include(x => x.Folio)
+                    .ThenInclude(x => x!.Items)
+
+                .Include(x => x.Folio)
+                    .ThenInclude(x => x!.Payments)
+                        .ThenInclude(x => x.Refunds)
+
+                .Include(x => x.CancellationPolicySnapshot)
+
+                .Include(x => x.DepositPolicySnapshot)
+
+                .Where(x =>
+                    x.PropertyId == propertyId &&
+                    x.Id == id);
+
+        if (!tracking)
+        {
+            query = query.AsNoTracking();
+        }
+
         return await query.SingleOrDefaultAsync(ct);
     }
 
-    public async Task<(IReadOnlyList<Reservation> Items, int TotalCount)> SearchAsync(int propertyId, ReservationSearchRequest request, CancellationToken ct = default)
+
+    public async Task<(IReadOnlyList<Reservation> Items, int TotalCount)> SearchAsync(int? propertyId, ReservationSearchRequest request, CancellationToken ct = default)
     {
-        var query = _context.Reservations.AsNoTracking().Where(x => x.PropertyId == propertyId);
+        var query = _context.Reservations.AsNoTracking();
+        if (propertyId.HasValue) { query.Where(x => x.PropertyId == propertyId); }
         if (request.Status.HasValue) query = query.Where(x => x.Status == request.Status.Value);
         if (request.From.HasValue) query = query.Where(x => x.CheckOutDate > request.From.Value.Date);
         if (request.To.HasValue) query = query.Where(x => x.CheckInDate < request.To.Value.Date.AddDays(1));

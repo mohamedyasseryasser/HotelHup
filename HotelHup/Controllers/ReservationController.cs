@@ -189,6 +189,60 @@ public sealed class ReservationController : ControllerBase
         var actor = await GetActor(); if (!actor.Success || actor.Data is null) return Result(actor);
         return Result(await _service.CheckOutAsync(actor.Data, propertyId, id, request ?? new(), ct));
     }
+    [HttpPost("reservations/{id:int}/extend-checkout")]
+    [Authorize(Policy = Permissions.Reservations.Modify)]
+    public async Task<IActionResult> ExtendCheckout(
+    int id,
+    [FromQuery] int propertyId,
+    [FromBody] ExtendCheckoutRequest request,
+    CancellationToken ct)
+    {
+        var invalid = ValidateModelState();
+
+        if (invalid is not null)
+        {
+            return invalid;
+        }
+
+        var actor = await GetActor();
+
+        if (!actor.Success || actor.Data is null)
+        {
+            return Result(actor);
+        }
+
+        return Result(
+            await _service.ExtendCheckoutAsync(
+                actor.Data,
+                propertyId,
+                id,
+                request,
+                ct));
+    }                                           
+
+    [HttpPost("reservations/{id:int}/early-checkout")]
+    [Authorize(Policy = Permissions.Reservations.Modify)]
+    public async Task<IActionResult> EarlyCheckout(
+    int id,
+    [FromQuery] int propertyId,
+    [FromBody] EarlyCheckoutRequest? request,
+    CancellationToken ct)
+    {
+        var actor = await GetActor();
+
+        if (!actor.Success || actor.Data is null)
+        {
+            return Result(actor);
+        }
+
+        return Result(
+            await _service.EarlyCheckoutAsync(
+                actor.Data,
+                propertyId,
+                id,
+                request ?? new(),
+                ct));
+    }
 
     private async Task<ResponseStatus<User>> GetActor()
     {

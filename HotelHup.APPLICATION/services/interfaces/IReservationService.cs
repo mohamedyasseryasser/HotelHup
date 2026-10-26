@@ -1,11 +1,7 @@
 ﻿using HotelHup.APPLICATION.DTO.General;
 using HotelHup.APPLICATION.DTO.reservation;
 using HotelHup.CORE.Entities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+ 
 
 namespace HotelHup.APPLICATION.services.interfaces
 {
@@ -25,6 +21,22 @@ namespace HotelHup.APPLICATION.services.interfaces
         Task<ResponseStatus<ReservationActionResponse>> CheckOutAsync(User actor, int propertyId, int id, CheckOutRequest request, CancellationToken ct = default);
         Task<ResponseStatus<ReservationActionResponse>> NoShowAsync(User actor, int propertyId, int id, NoShowRequest request, CancellationToken ct = default);
         Task<ResponseStatus<IReadOnlyList<ReservationStatusHistoryResponse>>> GetStatusHistoryAsync(User actor, int propertyId, int id, CancellationToken ct = default);
+        Task<ResponseStatus<ReservationActionResponse>>
+    ExtendCheckoutAsync(
+        User actor,
+        int propertyId,
+        int id,
+        ExtendCheckoutRequest request,
+        CancellationToken ct = default);
+
+        Task<ResponseStatus<ReservationActionResponse>>
+            EarlyCheckoutAsync(
+                User actor,
+                int propertyId,
+                int id,
+                EarlyCheckoutRequest request,
+                CancellationToken ct = default);
+
     }
 
 }

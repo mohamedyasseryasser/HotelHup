@@ -164,11 +164,40 @@ namespace HotelHup.APPLICATION.services.implementation
                         "Create",
                         "pending",
                         null,
-                        version,
+                        new
+                        {
+                            policy.Id,
+                            policy.PropertyId,
+                            policy.Name,
+                            policy.Type,
+                            policy.Amount,
+                            policy.Percentage,
+                            policy.ValidFrom,
+                            policy.ValidTo,
+                            policy.IsActive,
+                            policy.CurrentVersion,
+
+                            Version = new
+                            {
+                                version.Id,
+                                version.DepositId,
+                                version.Version,
+                                version.Name,
+                                version.Type,
+                                version.Amount,
+                                version.Percentage,
+                                version.ValidFrom,
+                                version.ValidTo,
+                                version.IsActive,
+                                version.CreatedAt,
+                                version.CreatedBy
+                            }
+                        },
                         null,
                         propertyId,
                         actor.Id),
                     ct);
+
             }
             catch (DbUpdateConcurrencyException)
             {
@@ -183,7 +212,7 @@ namespace HotelHup.APPLICATION.services.implementation
                     409);
             }
 
-            return Created(ToResponse(policy));
+            return Ok(ToResponse(policy));
         }
 
 
@@ -1115,26 +1144,50 @@ namespace HotelHup.APPLICATION.services.implementation
                 statusCode: statusCode);
         }
         private static DepositPolicyVersion
-    NewDepositVersion(
+     NewDepositVersion(
         DepositPolicy policy,
         CreateDepositPolicyRequest request,
-        int version,
+        int versionNumber,
         DateTimeOffset now,
         string actorId)
         {
             return new DepositPolicyVersion
             {
-                Deposit = policy,
-                Version = version,
-                Name = Clean(request.Name),
-                Type = request.Type,
-                Amount = request.Amount,
-                Percentage = request.Percentage,
-                ValidFrom = request.ValidFrom.ToUniversalTime(),
-                ValidTo = request.ValidTo?.ToUniversalTime(),
-                IsActive = true,
-                CreatedAt = now,
-                CreatedBy = actorId
+                /*
+                 * هذا الربط مطلوب لـ EF أثناء الحفظ.
+                 */
+                Deposit =
+                    policy,
+
+                Version =
+                    versionNumber,
+
+                Name =
+                    Clean(request.Name),
+
+                Type =
+                    request.Type,
+
+                Amount =
+                    request.Amount,
+
+                Percentage =
+                    request.Percentage,
+
+                ValidFrom =
+                    request.ValidFrom.ToUniversalTime(),
+
+                ValidTo =
+                    request.ValidTo?.ToUniversalTime(),
+
+                IsActive =
+                    true,
+
+                CreatedAt =
+                    now,
+
+                CreatedBy =
+                    actorId
             };
         }
 
@@ -1189,69 +1242,67 @@ namespace HotelHup.APPLICATION.services.implementation
             return new DepositPolicyResponse
             {
                 Id =
-                    policy.Id,
+            policy.Id,
 
                 PropertyId =
-                    policy.PropertyId,
+            policy.PropertyId,
 
-                IsActive =
-                    policy.IsActive,
+                Name =
+            policy.Name,
+
+                Type =
+            policy.Type,
+
+                Amount =
+            policy.Amount,
+
+                Percentage =
+            policy.Percentage,
 
                 CurrentVersion =
-                    policy.CurrentVersion,
+            policy.CurrentVersion,
 
-                RowVersion =
-                    Convert.ToBase64String(
-                        policy.RowVersion ?? Array.Empty<byte>()),
+                IsActive =
+            policy.IsActive,
 
                 Versions =
-                    policy.Versions
-                        .OrderByDescending(v => v.Version)
-                        .Select(v => new DepositPolicyVersionResponse
+            policy.Versions
+                .OrderByDescending(x => x.Version)
+                .Select(
+                    version =>
+                        new DepositPolicyVersionResponse
                         {
                             Id =
-                                v.Id,
+                                version.Id,
 
                             DepositId =
-                                v.DepositId,
+                                version.DepositId,
 
                             Version =
-                                v.Version,
+                                version.Version,
 
                             Name =
-                                v.Name,
+                                version.Name,
 
                             Type =
-                                v.Type,
+                                version.Type,
 
                             Amount =
-                                v.Amount,
+                                version.Amount,
 
                             Percentage =
-                                v.Percentage,
+                                version.Percentage,
 
                             ValidFrom =
-                                v.ValidFrom,
+                                version.ValidFrom,
 
                             ValidTo =
-                                v.ValidTo,
+                                version.ValidTo,
 
                             IsActive =
-                                v.IsActive,
-
-                            CreatedAt =
-                                v.CreatedAt,
-
-                            CreatedBy =
-                                v.CreatedBy,
-
-                            UpdatedAt =
-                                v.UpdatedAt,
-
-                            UpdatedBy =
-                                v.UpdatedBy
+                                version.IsActive
                         })
-                        .ToList()
+                .ToList()
             };
         }
     }

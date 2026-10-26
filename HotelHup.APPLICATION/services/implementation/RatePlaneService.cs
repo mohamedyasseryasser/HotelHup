@@ -417,10 +417,10 @@ namespace HotelHup.APPLICATION.services.implementation
                     409);
             }
 
-            if (!plan.IsActive)
+            if (plan.IsActive)
             {
                 return Fail<RatePlanResponse>(
-                    "Rate plan is already inactive.",
+                    "Rate plan is already active.",
                     400);
             }
 

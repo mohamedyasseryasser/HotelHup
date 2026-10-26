@@ -43,24 +43,6 @@ namespace HotelHup.APPLICATION.DTO.property.propertydepositdtos
     }
 
 
-    public sealed class DepositPolicyResponse
-    {
-        public int Id { get; init; }
-
-        public int PropertyId { get; init; }
-
-        public bool IsActive { get; init; }
-
-        public int CurrentVersion { get; init; }
-        public string RowVersion { get; init; } = string.Empty;
-
-        public IReadOnlyList<DepositPolicyVersionResponse> Versions
-        {
-            get;
-            init;
-        } = Array.Empty<DepositPolicyVersionResponse>();
-    }
-
     public sealed class DepositPolicyVersionResponse
     {
         public int Id { get; init; }
@@ -69,7 +51,8 @@ namespace HotelHup.APPLICATION.DTO.property.propertydepositdtos
 
         public int Version { get; init; }
 
-        public string Name { get; init; } = string.Empty;
+        public string Name { get; init; } =
+            string.Empty;
 
         public DepositType Type { get; init; }
 
@@ -82,13 +65,32 @@ namespace HotelHup.APPLICATION.DTO.property.propertydepositdtos
         public DateTimeOffset? ValidTo { get; init; }
 
         public bool IsActive { get; init; }
-
-        public DateTimeOffset CreatedAt { get; init; }
-
-        public string? CreatedBy { get; init; }
-
-        public DateTimeOffset? UpdatedAt { get; init; }
-
-        public string? UpdatedBy { get; init; }
     }
+
+
+    public sealed class DepositPolicyResponse
+    {
+        public int Id { get; init; }
+
+        public int PropertyId { get; init; }
+
+        public string Name { get; init; } =
+            string.Empty;
+
+        public DepositType Type { get; init; }
+
+        public decimal Amount { get; init; }
+
+        public decimal Percentage { get; init; }
+
+        public int CurrentVersion { get; init; }
+
+        public bool IsActive { get; init; }
+
+        public IReadOnlyList<DepositPolicyVersionResponse>
+            Versions
+        { get; init; } =
+            Array.Empty<DepositPolicyVersionResponse>();
+    }
+
 }

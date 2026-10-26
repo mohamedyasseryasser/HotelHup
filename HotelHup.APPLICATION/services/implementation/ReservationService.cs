@@ -12,12 +12,13 @@ namespace HotelHup.APPLICATION.services.implementation;
 
 public sealed class ReservationService : IReservationService    
 {
-    private readonly IUserRepository user;
+   
+     private readonly IUserRepository user;
     private readonly IReservationRepository _repository;
     public ReservationService(IUserRepository user, IReservationRepository repository)
     {
-        this.user = user;
-        _repository = repository;                                    
+         this.user = user;
+        _repository = repository;              
     }
 
     public async Task<ResponseStatus<IReadOnlyList<AvailabilityItemResponse>>> 
@@ -25,18 +26,54 @@ public sealed class ReservationService : IReservationService
         AvailabilityRequest request, 
         CancellationToken ct = default)
     {
-        if (!HasScope(actor, request.PropertyId)) return Fail<IReadOnlyList<AvailabilityItemResponse>>("Property scope is invalid.", "PROPERTY_SCOPE_INVALID", 403);
+        if (!HasScope(actor, request.PropertyId))
+        {
+            return Fail<IReadOnlyList<AvailabilityItemResponse>>("Property scope is invalid.", "PROPERTY_SCOPE_INVALID", 403);
+        }
         var dates = ValidateDates(request.CheckInDate, request.CheckOutDate);
-        if (dates is not null) return Fail<IReadOnlyList<AvailabilityItemResponse>>(dates, "INVALID_DATES");
+        if (dates is not null)
+        {
+            return Fail<IReadOnlyList<AvailabilityItemResponse>>(dates, "INVALID_DATES");
+        }
         var property = await _repository.GetPropertyAsync(request.PropertyId, ct);
-        if (property is null) return Fail<IReadOnlyList<AvailabilityItemResponse>>("Property was not found.", "PROPERTY_NOT_FOUND", 404);
-        if (property.Status != PropertyStatus.Active) return Fail<IReadOnlyList<AvailabilityItemResponse>>("Property is inactive.", "PROPERTY_INACTIVE");
-        var rooms = await _repository.GetAvailableRoomsAsync(request.PropertyId, request.CheckInDate.Date, request.CheckOutDate.Date, request.Adults, request.Children, request.RoomTypeId, request.ExcludedReservationId, ct);
+        if (property is null)
+        {
+            return Fail<IReadOnlyList<AvailabilityItemResponse>>("Property was not found.", "PROPERTY_NOT_FOUND", 404);
+        }
+        if (property.Status != PropertyStatus.Active)
+        {
+            return Fail<IReadOnlyList<AvailabilityItemResponse>>("Property is inactive.", "PROPERTY_INACTIVE");
+        }
+        var rooms = await _repository.GetAvailableRoomsAsync(
+            property.ID,
+            request.CheckInDate.Date,
+            request.CheckOutDate.Date, 
+            request.Adults,
+            request.Children, 
+            request.RoomTypeId, 
+            request.ExcludedReservationId,
+            ct);
+        if (rooms.Count==0)
+        {
+            return Ok<IReadOnlyList<AvailabilityItemResponse>>(
+                new List<AvailabilityItemResponse>(),
+                "not has any room avaliable",
+                200);
+        }
         var nights = (request.CheckOutDate.Date - request.CheckInDate.Date).Days;
         var result = rooms.Select(room =>
         {
             var rate = room.PricePerNight > 0 ? room.PricePerNight : room.RoomType?.BasePrice ?? 0m;
-            return new AvailabilityItemResponse { RoomId = room.Id, RoomNumber = room.RoomNumber, RoomTypeId = room.RoomTypeId, RoomTypeName = room.RoomType?.Name ?? string.Empty, NightlyRate = rate, Nights = nights, TotalAmount = Money(rate * nights) };
+            return new AvailabilityItemResponse
+            { 
+                RoomId = room.Id, 
+                RoomNumber = room.RoomNumber,
+                RoomTypeId = room.RoomTypeId,
+                RoomTypeName = room.RoomType?.Name ?? string.Empty, 
+                NightlyRate = rate, 
+                Nights = nights, 
+                TotalAmount = Money(rate * nights)
+            };
         }).ToList();
         return Ok<IReadOnlyList<AvailabilityItemResponse>>(result);
     }
@@ -47,9 +84,24 @@ public sealed class ReservationService : IReservationService
         , CancellationToken ct = default)
     {
         var propertyId = request.PropertyId ?? actor.PropertyId;
-        if (!propertyId.HasValue || !HasScope(actor, propertyId.Value)) return Fail<PagedReservationResponse>("A valid property scope is required.", "PROPERTY_SCOPE_REQUIRED", 403);
-        var (items, total) = await _repository.SearchAsync(propertyId.Value, request, ct);
-        return Ok(new PagedReservationResponse { Items = items.Select(MapSummary).ToList(), Page = request.Page, PageSize = request.PageSize, TotalCount = total });
+        
+        if (actor.PropertyId!=null && !HasScope(actor,propertyId.Value))
+        {
+            return Fail<PagedReservationResponse>("A valid property scope is required.", "PROPERTY_SCOPE_REQUIRED", 403);
+
+        }
+    //    if (!propertyId.HasValue || !HasScope(actor, propertyId.Value))
+      //  {
+        //    return Fail<PagedReservationResponse>("A valid property scope is required.", "PROPERTY_SCOPE_REQUIRED", 403);
+        //}
+        var (items, total) = await _repository.SearchAsync(propertyId, request, ct);
+        return Ok(new PagedReservationResponse 
+        {
+            Items = items.Select(MapSummary).ToList(), 
+            Page = request.Page,
+            PageSize = request.PageSize, 
+            TotalCount = total
+        });
     }
 
     public async Task<ResponseStatus<ReservationResponse>>
@@ -58,9 +110,13 @@ public sealed class ReservationService : IReservationService
         int id,
         CancellationToken ct = default)
     {
-        if (!HasScope(actor, propertyId)) return Fail<ReservationResponse>("Reservation was not found.", "RESERVATION_NOT_FOUND", 404);
+        if (!HasScope(actor, propertyId))
+        {
+            return Fail<ReservationResponse>("Reservation was not found.", "RESERVATION_NOT_FOUND", 404);
+        }
         var reservation = await _repository.GetByIdAsync(propertyId, id, false, ct);
-        return reservation is null ? Fail<ReservationResponse>("Reservation was not found.", "RESERVATION_NOT_FOUND", 404) : Ok(Map(reservation));
+        return reservation is null ?
+            Fail<ReservationResponse>("Reservation was not found.", "RESERVATION_NOT_FOUND", 404) : Ok(Map(reservation));
     }
 
     public async Task<ResponseStatus<ReservationResponse>>
@@ -75,6 +131,17 @@ public sealed class ReservationService : IReservationService
         CreateReservationRequest request,
         CancellationToken ct = default)
     {
+        var policyValidation =
+    ValidateRequiredPolicyIds(request);
+
+        if (policyValidation is not null)
+        {
+            return Fail<ReservationResponse>(
+                policyValidation,
+                "INVALID_POLICY_IDS",
+                422);
+        }
+
         //actor must be manager or admin or receptionist
         //must be manager or receptionist in scope property
         var auth = await AuthorizeAsync(actor, request.PropertyId, ct);
@@ -136,7 +203,6 @@ public sealed class ReservationService : IReservationService
             CancellationPolicyVersionId = request.CancellationPolicyVersionId,
             DepositPolicyId = request.DepositPolicyId,
             DepositPolicyVersionId = request.DepositPolicyVersionId,
-
         };
         var selectedRoomIds = new HashSet<int>();
         foreach (var item in requestedRooms)
@@ -204,35 +270,18 @@ public sealed class ReservationService : IReservationService
             reservation.ReservationRooms.Add(line);
         }
         RecalculateTotals(reservation, taxes);
-        foreach (var tax in taxes)
-            reservation.ReservationTaxSnapshots.Add(new ReservationTaxSnapshot
-            {
-                TaxId = tax.Id,
-                TaxCode = tax.Code,
-                TaxName = tax.Name,
-                Rate = tax.Rate,
-                Type = tax.Type,
-                IsInclusive = tax.IsInclusive,
-                TaxableAmount = Money(reservation.BaseAmount - reservation.TotalDiscountAmount),
-                TaxAmount = Money(tax.Type == TaxType.Percentage
-                    ? (reservation.BaseAmount - reservation.TotalDiscountAmount) * tax.Rate / 100m
-                    : tax.Rate),
-                TaxValidFrom = tax.ValidFrom,
-                TaxValidTo = tax.ValidTo,
-                CreatedAt = now,
-                CreatedBy = actor.Id
-            });
+         
         reservation.Adults = reservation.ReservationRooms.Sum(x => x.Adults);
         reservation.Children = reservation.ReservationRooms.Sum(x => x.Children);
         await AddPolicySnapshotsAsync(reservation, request, request.CheckInDate, now, ct);
-        if (request.CancellationPolicyId.HasValue && reservation.CancellationPolicySnapshot is null)
+        if ( reservation.CancellationPolicySnapshot is null)
         {
             return Fail<ReservationResponse>(
                 "Cancellation policy was not found or is not valid for the stay date.", 
                 "CANCELLATION_POLICY_NOT_FOUND",
                 422);
         }
-        if (request.DepositPolicyId.HasValue && reservation.DepositPolicySnapshot is null)
+        if ( reservation.DepositPolicySnapshot is null)
         {
             return Fail<ReservationResponse>(
                 "Deposit policy was not found or is not valid for the stay date.",
@@ -249,6 +298,12 @@ public sealed class ReservationService : IReservationService
             CreatedAt = now,
             CreatedBy = actor.Id
         };
+        UpsertReservationRoomChargeItem(
+           folio,
+           reservation.TotalAmount,
+           reservation.TotalTaxAmount,
+           actor.Id,
+           now);
         try 
         {
             await _repository.AddAsync(reservation, folio, ct); 
@@ -272,7 +327,7 @@ public sealed class ReservationService : IReservationService
             201);
     }
 
-    public async Task<ResponseStatus<ReservationResponse>>
+    public async Task<ResponseStatus<ReservationResponse>>               
         UpdateAsync(User actor,
         int propertyId,
         int id,
@@ -417,11 +472,27 @@ public sealed class ReservationService : IReservationService
             }
             reservation.CheckInDate = checkIn; 
             reservation.CheckOutDate = checkOut;
-            RecalculateTotals(reservation, taxes);
+            RecalculateTotals(reservation);
             reservation.Adults = reservation.ReservationRooms.Where(x => x.IsCurrent).Sum(x => x.Adults);
             reservation.Children = reservation.ReservationRooms.Where(x => x.IsCurrent).Sum(x => x.Children);
+            if (reservation.Folio is null)
+            {
+                return Fail<ReservationResponse>(
+                    "Reservation folio was not found.",
+                    "FOLIO_NOT_FOUND",
+                    422);
+            }
             if (reservation.Folio is not null)
             {
+                var now =
+    DateTimeOffset.UtcNow;
+
+                UpsertReservationRoomChargeItem(
+                    reservation.Folio,
+                    reservation.TotalAmount,
+                    reservation.TotalTaxAmount,
+                    actor.Id,
+                    now);
                 reservation.Folio.Total = reservation.TotalAmount;
                  ReconcileFolio(reservation.Folio);
             }
@@ -641,9 +712,8 @@ public sealed class ReservationService : IReservationService
                     }
                 });
         }
-        var taxes = await _repository.GetActiveTaxesAsync(propertyId, now, ct);
-        
-        RecalculateTotals(reservation, taxes); 
+         
+        RecalculateTotals(reservation); 
         
         reservation.Adults = reservation.ReservationRooms
             .Where(x => x.IsCurrent).
@@ -655,18 +725,28 @@ public sealed class ReservationService : IReservationService
         
         reservation.UpdatedAt = now;
         reservation.UpdatedBy = actor.Id;
- 
-        var totalDelta = Money(
-            reservation.TotalAmount - oldReservationTotal);
 
-        if (reservation.Folio is not null)
+        if (reservation.Folio is null)
         {
-            reservation.Folio.Total = Money(
-                reservation.Folio.Total + totalDelta);
-
-            reservation.Folio.Balance = Money(
-                reservation.Folio.Balance + totalDelta);
+            return Fail<ReservationActionResponse>(
+                "Reservation folio was not found.",
+                "FOLIO_NOT_FOUND",
+                422);
         }
+
+        UpsertReservationRoomChargeItem(
+            reservation.Folio,
+            reservation.TotalAmount,
+            reservation.TotalTaxAmount,
+            actor.Id,
+            now);
+
+        reservation.Folio.Total =
+            reservation.TotalAmount;
+
+        ReconcileFolio(
+            reservation.Folio);
+
         try { await _repository.SaveChangesAsync(ct); } catch (DbUpdateConcurrencyException) { return Fail<ReservationActionResponse>("The reservation was modified by another request.", "CONCURRENCY_CONFLICT", 409); }
         return Ok(Action(reservation));
     }
@@ -696,6 +776,30 @@ public sealed class ReservationService : IReservationService
         if (reservation.Status != ReservationStatus.Confirmed)
         {
             return Fail<ReservationActionResponse>("Only confirmed reservations can check in.", "INVALID_STATE_TRANSITION", 409);
+        }
+        //if checkin not equal current day return error
+        var propertyLocalNow = ToPropertyTime(reservation.Property,DateTimeOffset.UtcNow);
+
+        if (propertyLocalNow.Date != reservation.CheckInDate.Date)
+        {
+            return Fail<ReservationActionResponse>(
+                "Check-in is allowed only on the reservation check-in date.",
+                "CHECK_IN_DATE_NOT_TODAY",
+                409);
+        }
+        //if same day check earlycheckin in property setting 
+        var isEarlyCheckIn =
+            propertyLocalNow.TimeOfDay <
+                 (reservation.Property?.Settings?.CheckInTime
+        ?? new TimeSpan(14, 0, 0));
+
+        if (isEarlyCheckIn &&
+            reservation.Property?.Settings?.AllowEarlyCheckIn != true)
+        {
+            return Fail<ReservationActionResponse>(
+                "Early check-in is not allowed for this property.",
+                "EARLY_CHECK_IN_NOT_ALLOWED",
+                409);
         }
         // Check-in is a reservation-level operation: a reservation can no longer
         // be checked in partially. Ignore the legacy RoomId/RoomIds fields and
@@ -739,7 +843,7 @@ public sealed class ReservationService : IReservationService
     }
 
     public Task<ResponseStatus<ReservationActionResponse>> 
-        ReleaseRoomAsync(User actor,
+        ReleaseRoomAsync(User actor, 
         int propertyId, 
         int id,
         int reservationRoomId, 
@@ -783,8 +887,36 @@ public sealed class ReservationService : IReservationService
         assignment.IsCurrent = false;
         assignment.ReleasedAt = DateTimeOffset.UtcNow;
         assignment.AssignmentReason = "Released";
-        var taxes = await _repository.GetActiveTaxesAsync(propertyId, DateTimeOffset.UtcNow, ct);
-        RecalculateTotals(reservation, taxes);
+      //  var taxes = await _repository.GetActiveTaxesAsync(propertyId, DateTimeOffset.UtcNow, ct);
+        RecalculateTotals(reservation);
+        if (reservation.Folio is null)
+        {
+            return Fail<ReservationActionResponse>(
+                "Reservation folio was not found.",
+                "FOLIO_NOT_FOUND",
+                422);
+        }
+        var now =
+    DateTimeOffset.UtcNow;
+        UpsertReservationRoomChargeItem(
+            reservation.Folio,
+            reservation.TotalAmount,
+            reservation.TotalTaxAmount,
+            actor.Id,
+            now);
+
+        reservation.Folio.Total =
+            reservation.TotalAmount;
+
+        ReconcileFolio(
+            reservation.Folio);
+
+        reservation.UpdatedAt =
+            now;
+
+        reservation.UpdatedBy =
+            actor.Id;
+
         reservation.Adults = reservation.ReservationRooms.Where(x => x.IsCurrent).Sum(x => x.Adults);
         reservation.Children = reservation.ReservationRooms.Where(x => x.IsCurrent).Sum(x => x.Children);
         if (reservation.Folio is not null)
@@ -890,6 +1022,705 @@ public sealed class ReservationService : IReservationService
 
         await _repository.PersistLifecycleAsync(reservation, rooms, housekeepingTasks, ct); 
         return Ok(Action(reservation));
+    }
+
+    public Task<ResponseStatus<ReservationActionResponse>>
+    EarlyCheckoutAsync(
+        User actor,
+        int propertyId,
+        int id,
+        EarlyCheckoutRequest request,
+        CancellationToken ct = default) =>
+    _repository.ExecuteSerializableAsync(
+        () => EarlyCheckoutCoreAsync(
+            actor,
+            propertyId,
+            id,
+            request,
+            ct),
+        ct);
+    private async Task<ResponseStatus<ReservationActionResponse>>
+     EarlyCheckoutCoreAsync(
+         User actor,
+         int propertyId,
+         int id,
+         EarlyCheckoutRequest request,
+         CancellationToken ct)
+    {
+        var auth =
+            await AuthorizeAsync(
+                actor,
+                propertyId,
+                ct);
+
+        if (!auth.Success)
+        {
+            return Fail<ReservationActionResponse>(
+                auth.Message,
+                "FORBIDDEN",
+                auth.StatusCode);
+        }
+
+        var reservation =
+            await _repository.GetByIdAsync(
+                propertyId,
+                id,
+                true,
+                ct);
+
+        if (reservation is null)
+        {
+            return Fail<ReservationActionResponse>(
+                "Reservation was not found.",
+                "RESERVATION_NOT_FOUND",
+                404);
+        }
+
+        if (reservation.Status != ReservationStatus.CheckedIn)
+        {
+            return Fail<ReservationActionResponse>(
+                "Only checked-in reservations can check out early.",
+                "INVALID_STATE_TRANSITION",
+                409);
+        }
+
+        var localNow =
+            ToPropertyTime(
+                reservation.Property,
+                DateTimeOffset.UtcNow);
+
+        var requestedDate =
+            (
+                request.CheckOutDate ??
+                localNow.Date
+            ).Date;
+
+        /*
+         * الـ early checkout يجب أن يتم
+         * في تاريخ اليوم حسب توقيت الفندق.
+         */
+        if (requestedDate != localNow.Date)
+        {
+            return Fail<ReservationActionResponse>(
+                "Early check-out must be processed for today.",
+                "INVALID_EARLY_CHECKOUT_DATE",
+                422);
+        }
+
+        /*
+         * التاريخ يجب أن يكون بعد check-in
+         * وقبل تاريخ checkout الأصلي.
+         */
+        if (requestedDate <= reservation.CheckInDate.Date ||
+            requestedDate >= reservation.CheckOutDate.Date)
+        {
+            return Fail<ReservationActionResponse>(
+                "The early check-out date must be between check-in and the original check-out date.",
+                "INVALID_EARLY_CHECKOUT_DATE",
+                422);
+        }
+
+        var currentAssignments =
+            reservation.ReservationRooms
+                .Where(x => x.IsCurrent)
+                .ToList();
+
+        if (currentAssignments.Count == 0)
+        {
+            return Fail<ReservationActionResponse>(
+                "The reservation has no current room assignments.",
+                "ROOM_ASSIGNMENT_REQUIRED",
+                422);
+        }
+
+        var oldTotal =
+            reservation.TotalAmount;
+
+        var newNights =
+            (
+                requestedDate -
+                reservation.CheckInDate.Date
+            ).Days;
+
+        var refundableByRatePlan =
+            currentAssignments.All(
+                x =>
+                    x.RatePlanSnapshot?.IsRefundable
+                    == true);
+
+        var rooms =
+            new List<Room>();
+
+        /*
+         * حساب كل ReservationRoom.
+         *
+         * السعر يتم أخذه فقط من:
+         *
+         * RatePlanSnapshot.NightlyRate
+         *
+         * لا نستخدم السعر الحالي للغرفة
+         * أو نوع الغرفة أو RatePlanVersion.
+         */
+        foreach (var assignment in currentAssignments)
+        {
+            var room =
+                await _repository.GetRoomAsync(
+                    propertyId,
+                    assignment.RoomId,
+                    true,
+                    ct);
+
+            if (room is null)
+            {
+                return Fail<ReservationActionResponse>(
+                    "Room was not found.",
+                    "ROOM_NOT_FOUND",
+                    404);
+            }
+
+            rooms.Add(room);
+
+            /*
+             * الـ snapshot يجب أن يكون موجودًا
+             * لكل ReservationRoom.
+             */
+            if (assignment.RatePlanSnapshot is null)
+            {
+                return Fail<ReservationActionResponse>(
+                    $"The rate plan snapshot is missing for room {assignment.RoomId}.",
+                    "RATE_PLAN_SNAPSHOT_REQUIRED",
+                    422);
+            }
+
+            /*
+             * السعر التاريخي المتفق عليه
+             * وقت إنشاء الحجز.
+             */
+            var nightlyRate =
+                assignment.RatePlanSnapshot.NightlyRate;
+
+            if (nightlyRate <= 0m)
+            {
+                return Fail<ReservationActionResponse>(
+                    $"The rate plan snapshot has no valid nightly rate for room {assignment.RoomId}.",
+                    "RATE_PLAN_RATE_NOT_FOUND",
+                    422);
+            }
+
+            assignment.CheckOutDate =
+                requestedDate;
+
+            assignment.Nights =
+                newNights;
+
+            assignment.NightlyRate =
+                nightlyRate;
+
+            assignment.BaseAmount =
+                Money(
+                    nightlyRate *
+                    newNights);
+
+            assignment.TotalAmount =
+                Money(
+                    assignment.BaseAmount -
+                    assignment.DiscountAmount +
+                    assignment.FeeAmount);
+
+            /*
+             * تحديث بيانات الـ snapshot
+             * مع عدد الليالي الجديد.
+             */
+            assignment.RatePlanSnapshot.NightlyRate =
+                nightlyRate;
+
+            assignment.RatePlanSnapshot.BaseAmount =
+                assignment.BaseAmount;
+
+            assignment.RatePlanSnapshot.TotalAmount =
+                assignment.TotalAmount;
+        }
+
+        var now =
+            DateTimeOffset.UtcNow;
+
+         
+
+        /*
+         * إعادة حساب إجمالي الحجز
+         * بعد تقليل عدد الليالي.
+         */
+        RecalculateTotals(
+            reservation);
+        if (reservation.Folio is null)
+        {
+            return Fail<ReservationActionResponse>(
+                "Reservation folio was not found.",
+                "FOLIO_NOT_FOUND",
+                422);
+        }
+
+        UpsertReservationRoomChargeItem(
+            reservation.Folio,
+            reservation.TotalAmount,
+            reservation.TotalTaxAmount,
+            actor.Id,
+            now);
+
+        reservation.Folio.Total =
+            reservation.TotalAmount;
+
+        ReconcileFolio(
+            reservation.Folio);
+
+        var calculatedRefund =
+            Money(
+                Math.Max(
+                    0m,
+                    oldTotal -
+                    reservation.TotalAmount));
+
+        /*
+         * حساب إجمالي المدفوعات.
+         */
+        var grossPaid =
+            reservation.Folio?.Payments
+                .Where(
+                    x =>
+                        x.Status is
+                            PaymentStatus.Paid or
+                            PaymentStatus.PartiallyPaid)
+                .Sum(x => x.Amount)
+            ?? 0m;
+
+        /*
+         * حساب الـ refunds التي تمت سابقًا.
+         */
+        var alreadyRefunded =
+            reservation.Folio?.Payments
+                .SelectMany(x => x.Refunds)
+                .Where(
+                    x =>
+                        x.Status ==
+                        RefundStatus.Completed)
+                .Sum(x => x.Amount)
+            ?? 0m;
+
+        /*
+         * صافي المبلغ المدفوع.
+         */
+        var paidAmount =
+            Money(
+                Math.Max(
+                    0m,
+                    grossPaid -
+                    alreadyRefunded));
+
+        /*
+         * تحديث إجمالي الـ Folio
+         * وإعادة حساب Balance و CreditBalance.
+         */
+        if (reservation.Folio is not null)
+        {
+            reservation.Folio.Total =
+                reservation.TotalAmount;
+
+            ReconcileFolio(
+                reservation.Folio);
+        }
+
+        var requireFullPayment =
+            reservation.Property.Settings?
+                .RequireFullPaymentBeforeCheckOut
+            == true;
+
+        /*
+         * جلب أدوار المستخدم.
+         */
+        var roles =
+            await user.GetRolesAsync(
+                actor.Id,
+                ct);
+
+        var canOverrideFullPayment =
+            roles.Any(
+                x =>
+                    x.IsActive &&
+                    (
+                        string.Equals(
+                            x.Name,
+                            nameof(UserRole.Manager),
+                            StringComparison.OrdinalIgnoreCase)
+                        ||
+                        string.Equals(
+                            x.Name,
+                            nameof(UserRole.Admin),
+                            StringComparison.OrdinalIgnoreCase)
+                    ));
+
+        /*
+         * إذا طلب override لكنه ليس
+         * Manager أو Admin.
+         */
+        if (requireFullPayment &&
+            paidAmount < reservation.TotalAmount &&
+            request.ManagerOverride &&
+            !canOverrideFullPayment)
+        {
+            return Fail<ReservationActionResponse>(
+                "Only a manager or admin can override the outstanding balance.",
+                "POLICY_OVERRIDE_NOT_ALLOWED",
+                403);
+        }
+
+        /*
+         * إذا كان الدفع غير مكتمل
+         * ولم يتم إرسال override.
+         */
+        if (requireFullPayment &&
+            paidAmount < reservation.TotalAmount &&
+            !request.ManagerOverride)
+        {
+            return Fail<ReservationActionResponse>(
+                "The folio must be fully paid before early check-out.",
+                "BALANCE_NOT_SETTLED",
+                409);
+        }
+
+        /*
+         * حساب المبلغ القابل للاسترداد فقط.
+         *
+         * لا يتم تنفيذ refund تلقائيًا.
+         */
+        var refundableAmount =
+            refundableByRatePlan
+                ? Money(
+                    Math.Min(
+                        calculatedRefund,
+                        paidAmount))
+                : 0m;
+
+        var requireInspection =
+            reservation.Property.Settings?
+                .RequireInspectionBeforeAvailable
+            == true;
+
+        /*
+         * تغيير حالة الغرف يتم بعد
+         * نجاح كل الحسابات والتحققات.
+         */
+        foreach (var assignment in currentAssignments)
+        {
+            var room =
+                rooms.First(
+                    x =>
+                        x.Id ==
+                        assignment.RoomId);
+
+            room.Status =
+                requireInspection
+                    ? RoomStatus.Dirty
+                    : RoomStatus.Available;
+
+            assignment.IsCurrent =
+                false;
+
+            assignment.ReleasedAt =
+                now;
+
+            assignment.AssignmentReason =
+                "Early check-out";
+        }
+
+        /*
+         * تحديث حالة الحجز.
+         */
+        reservation.CheckOutDate =
+            requestedDate;
+
+        reservation.Status =
+            ReservationStatus.CheckedOut;
+
+        reservation.UpdatedAt =
+            now;
+
+        reservation.UpdatedBy =
+            actor.Id;
+
+        AddHistory(
+            reservation,
+            ReservationStatus.CheckedIn,
+            ReservationStatus.CheckedOut,
+            request.Notes ??
+                "Early check-out",
+            actor.Id,
+            now);
+
+        
+
+        /*
+         * إنشاء مهام Housekeeping.
+         */
+        var housekeepingTasks =
+            rooms.Select(
+                room =>
+                    new HousekeepingTask
+                    {
+                        RoomId =
+                            room.Id,
+
+                        Status =
+                            HousekeepingTaskStatus.Pending,
+
+                        Notes =
+                            request.Notes,
+
+                        CreatedAt =
+                            now,
+
+                        CreatedBy =
+                            actor.Id
+                    })
+            .ToList();
+
+        await _repository.PersistLifecycleAsync(
+            reservation,
+            rooms,
+            housekeepingTasks,
+            ct);
+
+        return Ok(
+            Action(
+                reservation,
+                refundableAmount:
+                    refundableAmount,
+                paidAmount:
+                    paidAmount,
+                reason:
+                    request.Notes ??
+                    (
+                        refundableAmount > 0m
+                            ? "Early check-out completed. Manual refund is pending."
+                            : "Early check-out"
+                    )));
+    }
+
+
+
+    public Task<ResponseStatus<ReservationActionResponse>>
+    ExtendCheckoutAsync(
+        User actor,
+        int propertyId,
+        int id,
+        ExtendCheckoutRequest request,
+        CancellationToken ct = default) =>
+    _repository.ExecuteSerializableAsync(
+        () => ExtendCheckoutCoreAsync(
+            actor,
+            propertyId,
+            id,
+            request,
+            ct),
+        ct);
+    private async Task<ResponseStatus<ReservationActionResponse>>
+    ExtendCheckoutCoreAsync(
+        User actor,
+        int propertyId,
+        int id,
+        ExtendCheckoutRequest request,
+        CancellationToken ct)
+    {
+        //must by auth
+        //property is not null and is active
+        //must be  reservation.checkin
+        //get avaliable room
+        //compare reservation rooms with avaliable room                 
+
+        var auth = await AuthorizeAsync(actor, propertyId, ct);
+
+        if (!auth.Success)
+        {
+            return Fail<ReservationActionResponse>(
+                auth.Message,
+                "FORBIDDEN",
+                auth.StatusCode);
+        }
+
+        var reservation =
+            await _repository.GetByIdAsync(
+                propertyId,
+                id,
+                true,
+                ct);
+
+        if (reservation is null)
+        {
+            return Fail<ReservationActionResponse>(
+                "Reservation was not found.",
+                "RESERVATION_NOT_FOUND",
+                404);
+        }
+
+        if (reservation.Status != ReservationStatus.CheckedIn)
+        {
+            return Fail<ReservationActionResponse>(
+                "Only checked-in reservations can be extended.",
+                "INVALID_STATE_TRANSITION",
+                409);
+        }
+
+        var newCheckOut =
+            request.NewCheckOutDate.Date;
+
+        if (newCheckOut <= reservation.CheckOutDate.Date)
+        {
+            return Fail<ReservationActionResponse>(
+                "The new check-out date must be later than the current date.",
+                "INVALID_EXTENSION_DATE",
+                422);
+        }
+
+        var currentAssignments =
+            reservation.ReservationRooms
+                .Where(x => x.IsCurrent)
+                .ToList();
+
+        if (currentAssignments.Count == 0)
+        {
+            return Fail<ReservationActionResponse>(
+                "The reservation has no current room assignments.",
+                "ROOM_ASSIGNMENT_REQUIRED",
+                422);
+        }
+
+        foreach (var assignment in currentAssignments)
+        {
+            var room =
+                await _repository.GetRoomAsync(
+                    propertyId,
+                    assignment.RoomId,
+                    true,
+                    ct);
+
+            if (room is null)
+            {
+                return Fail<ReservationActionResponse>(
+                    "Room was not found.",
+                    "ROOM_NOT_FOUND",
+                    404);
+            }
+
+            var available =
+                await _repository.GetAvailableRoomsAsync(
+                    propertyId,
+                    reservation.CheckOutDate.Date,
+                    newCheckOut,
+                    assignment.Adults,
+                    assignment.Children,
+                    room.RoomTypeId,
+                    reservation.Id,
+                    ct);
+
+            if (!available.Any(x => x.Id == assignment.RoomId))
+            {
+                return Fail<ReservationActionResponse>(
+                    $"Room {assignment.RoomId} is not available for the requested extension.",
+                    "ROOM_NO_LONGER_AVAILABLE",
+                    409);
+            }
+        }
+
+        var oldTotal = reservation.TotalAmount;
+        var now = DateTimeOffset.UtcNow;
+
+        foreach (var assignment in currentAssignments)
+        {
+            var nights =
+                (newCheckOut - reservation.CheckInDate.Date).Days;
+
+            assignment.CheckOutDate = newCheckOut;
+            assignment.Nights = nights;
+
+            assignment.BaseAmount =
+                Money(assignment.NightlyRate * nights);
+
+            assignment.TotalAmount =
+                Money(
+                    assignment.BaseAmount -
+                    assignment.DiscountAmount +
+                    assignment.FeeAmount);
+
+            if (assignment.RatePlanSnapshot is not null)
+            {
+                assignment.RatePlanSnapshot.NightlyRate =
+                    assignment.NightlyRate;
+
+                assignment.RatePlanSnapshot.BaseAmount =
+                    assignment.BaseAmount;
+
+                assignment.RatePlanSnapshot.TotalAmount =
+                    assignment.TotalAmount;
+            }
+        }
+ 
+
+        RecalculateTotals(reservation);
+        if (reservation.Folio is null)
+        {
+            return Fail<ReservationActionResponse>(
+                "Reservation folio was not found.",
+                "FOLIO_NOT_FOUND",
+                422);
+        }
+
+        UpsertReservationRoomChargeItem(
+            reservation.Folio,
+            reservation.TotalAmount,
+            reservation.TotalTaxAmount,
+            actor.Id,
+            now);
+
+        reservation.Folio.Total =
+            reservation.TotalAmount;
+
+        ReconcileFolio(
+            reservation.Folio);
+
+        reservation.UpdatedAt =
+            now;
+
+        reservation.UpdatedBy =
+            actor.Id;
+        var totalDelta =
+            Money(reservation.TotalAmount - oldTotal);
+
+        reservation.UpdatedAt = now;
+        reservation.UpdatedBy = actor.Id;
+
+        if (reservation.Folio is not null)
+        {
+         //   EnsureReservationFolioBaseCharge(
+           //     reservation.Folio,
+             //   oldTotal,
+             //   now,
+              //  actor.Id);
+ 
+
+            reservation.Folio.Total =
+                reservation.TotalAmount;
+
+            ReconcileFolio(reservation.Folio);
+          
+
+        }
+
+        await _repository.SaveChangesAsync(ct);
+
+        return Ok(
+            Action(
+                reservation,
+                reason: request.Reason ??
+                    "Stay extended."));
     }
 
     public async Task<ResponseStatus<IReadOnlyList<ReservationStatusHistoryResponse>>> GetStatusHistoryAsync(User actor, int propertyId, int id, CancellationToken ct = default)
@@ -1232,49 +2063,281 @@ public sealed class ReservationService : IReservationService
         };
     }
 
+    private static void RecalculateTotals(
+     Reservation reservation,
+     IReadOnlyList<Tax> taxes)
+    {
+        var currentLines =
+            reservation.ReservationRooms
+                .Where(x => x.IsCurrent)
+                .ToList();
+
+        
+        var netBaseAmount =
+            Money(
+                currentLines.Sum(
+                    x => x.BaseAmount));
+
+        reservation.TotalDiscountAmount =
+            Money(
+                currentLines.Sum(
+                    x => x.DiscountAmount));
+
+        reservation.TotalFeeAmount =
+            Money(
+                currentLines.Sum(
+                    x => x.FeeAmount));
+
+         
+        var netTaxableAmount =
+            Money(
+                Math.Max(
+                    0m,
+                    netBaseAmount -
+                    reservation.TotalDiscountAmount));
+
+        var inclusiveTaxes =
+            taxes
+                .Where(x => x.IsInclusive)
+                .ToList();
+
+        var exclusiveTaxes =
+            taxes
+                .Where(x => !x.IsInclusive)
+                .ToList();
+
+        
+        var inclusiveTaxAmount =
+            CalculateTaxAmount(
+                netTaxableAmount,
+                inclusiveTaxes);
+ 
+        var exclusiveTaxAmount =
+            CalculateTaxAmount(
+                netTaxableAmount,
+                exclusiveTaxes);
+
+        
+        reservation.BaseAmount =
+            Money(
+                netBaseAmount +
+                inclusiveTaxAmount);
+
+       
+        var grossTaxableAmount =
+            Money(
+                Math.Max(
+                    0m,
+                    reservation.BaseAmount -
+                    reservation.TotalDiscountAmount));
+
+        
+        reservation.ReservationTaxSnapshots.Clear();
+
+        var capturedAt =
+            reservation.CreatedAt == default
+                ? DateTimeOffset.UtcNow
+                : reservation.CreatedAt;
+
+        
+        foreach (var tax in taxes)
+        {
+            var taxSnapshot =
+                new ReservationTaxSnapshot
+                {
+                    TaxId = tax.Id,
+                    ReservationId = reservation.Id,
+                    TaxCode = tax.Code,
+                    TaxName = tax.Name,
+                    Rate = tax.Rate,
+                    Type = tax.Type,
+                    IsInclusive = tax.IsInclusive,
+
+                     
+                    TaxableAmount =
+                        netTaxableAmount,
+
+                    TaxAmount =
+                        CalculateTaxAmount(
+                            netTaxableAmount,
+                            new[] { tax }),
+
+                    TaxValidFrom = tax.ValidFrom,
+                    TaxValidTo = tax.ValidTo,
+                    CreatedAt = capturedAt,
+                    CreatedBy = reservation.CreatedBy
+                };
+
+            reservation.ReservationTaxSnapshots.Add(
+                taxSnapshot);
+        }
+ 
+        reservation.TotalTaxAmount =
+            Money(
+                inclusiveTaxAmount +
+                exclusiveTaxAmount);
+
+         
+        reservation.TotalAmount =
+            Money(
+                grossTaxableAmount +
+                reservation.TotalFeeAmount +
+                exclusiveTaxAmount);
+    }
 
     private static void RecalculateTotals(
-        Reservation reservation,
-        IReadOnlyList<Tax> taxes)
+      Reservation reservation)
     {
-        var currentLines = reservation.ReservationRooms
-            .Where(x => x.IsCurrent)
-            .ToList();
+        var currentLines =
+            reservation.ReservationRooms
+                .Where(x => x.IsCurrent)
+                .ToList();
 
-        reservation.BaseAmount = Money(
-            currentLines.Sum(x => x.BaseAmount));
+        /*
+         * الغرف تحتوي على السعر الصافي بدون ضرائب.
+         */
+        var netBaseAmount =
+            Money(
+                currentLines.Sum(
+                    x => x.BaseAmount));
 
-        reservation.TotalDiscountAmount = Money(
-            currentLines.Sum(x => x.DiscountAmount));
+        reservation.TotalDiscountAmount =
+            Money(
+                currentLines.Sum(
+                    x => x.DiscountAmount));
 
-        reservation.TotalFeeAmount = Money(
-            currentLines.Sum(x => x.FeeAmount));
+        reservation.TotalFeeAmount =
+            Money(
+                currentLines.Sum(
+                    x => x.FeeAmount));
 
-        var taxableAmount = Money(
-            Math.Max(
-                0m,
-                reservation.BaseAmount -
-                reservation.TotalDiscountAmount));
+        var taxSnapshots =
+            reservation.ReservationTaxSnapshots
+                .ToList();
 
-         reservation.TotalTaxAmount = Money(
-            taxes.Sum(t =>
-                t.Type == TaxType.Percentage
-                    ? taxableAmount * t.Rate / 100m
-                    : t.Rate));
+        var inclusiveSnapshots =
+            taxSnapshots
+                .Where(x => x.IsInclusive)
+                .ToList();
 
-         var exclusiveTaxAmount = Money(
-            taxes
-                .Where(t => !t.IsInclusive)
-                .Sum(t =>
-                    t.Type == TaxType.Percentage
-                        ? taxableAmount * t.Rate / 100m
-                        : t.Rate));
+        var exclusiveSnapshots =
+            taxSnapshots
+                .Where(x => !x.IsInclusive)
+                .ToList();
 
-         reservation.TotalAmount = Money(
-            taxableAmount +
-            reservation.TotalFeeAmount +
-            exclusiveTaxAmount);
+        /*
+         * إجمالي السعر الصافي لكل الغرف
+         * بعد تطبيق الخصم.
+         */
+        var netTaxableAmount =
+            Money(
+                Math.Max(
+                    0m,
+                    netBaseAmount -
+                    reservation.TotalDiscountAmount));
+
+        /*
+         * حساب Inclusive Tax مرة واحدة
+         * على إجمالي الحجز.
+         */
+        var inclusiveTaxAmount =
+            CalculateTaxAmount(
+                netTaxableAmount,
+                inclusiveSnapshots);
+
+        /*
+         * حساب Exclusive Tax مرة واحدة
+         * على إجمالي الحجز.
+         */
+        var exclusiveTaxAmount =
+            CalculateTaxAmount(
+                netTaxableAmount,
+                exclusiveSnapshots);
+
+        /*
+         * BaseAmount الخاص بالحجز فقط
+         * يحتوي على InclusiveTax.
+         */
+        reservation.BaseAmount =
+            Money(
+                netBaseAmount +
+                inclusiveTaxAmount);
+
+        /*
+         * إجمالي السعر بعد الخصم.
+         */
+        var grossTaxableAmount =
+            Money(
+                Math.Max(
+                    0m,
+                    reservation.BaseAmount -
+                    reservation.TotalDiscountAmount));
+
+        /*
+         * تحديث قيم الـ snapshots.
+         */
+        foreach (var tax in taxSnapshots)
+        {
+            tax.TaxableAmount =
+                netTaxableAmount;
+
+            tax.TaxAmount =
+                CalculateTaxAmount(
+                    netTaxableAmount,
+                    new[] { tax });
+        }
+
+        reservation.TotalTaxAmount =
+            Money(
+                inclusiveTaxAmount +
+                exclusiveTaxAmount);
+
+        /*
+         * لا نضيف InclusiveTax مرة أخرى،
+         * لأنها موجودة داخل reservation.BaseAmount.
+         */
+        reservation.TotalAmount =
+            Money(
+                grossTaxableAmount +
+                reservation.TotalFeeAmount +
+                exclusiveTaxAmount);
     }
+    private static decimal CalculateTaxAmount(
+    decimal taxableAmount,
+    IEnumerable<ReservationTaxSnapshot> taxes)
+    {
+        return Money(
+            taxes.Sum(
+                tax =>
+                    tax.Type == TaxType.Percentage
+                        ? taxableAmount *
+                          Math.Max(0m, tax.Rate) /
+                          100m
+                        : Math.Max(
+                            0m,
+                            tax.Rate)));
+    }
+
+   
+
+    private static decimal CalculateTaxAmount(
+    decimal taxableAmount,
+    IEnumerable<Tax> taxes)
+    {
+        return Money(
+            taxes.Sum(
+                tax =>
+                    tax.Type == TaxType.Percentage
+                        ? taxableAmount *
+                          Math.Max(0m, tax.Rate) /
+                          100m
+                        : Math.Max(
+                            0m,
+                            tax.Rate)));
+    }
+
+   
+ 
 
 
     private async Task AddPolicySnapshotsAsync(
@@ -1284,19 +2347,22 @@ public sealed class ReservationService : IReservationService
      DateTimeOffset now,
      CancellationToken ct)
     {
-        if (request.CancellationPolicyId.HasValue)
+        if (request.CancellationPolicyId>0)
         {
             var cancellationVersion =
                 await _repository.GetCancellationPolicyVersionAsync(
                     propertyId: request.PropertyId,
-                    policyId: request.CancellationPolicyId.Value,
+                    policyId: request.CancellationPolicyId,
                     versionId: request.CancellationPolicyVersionId,
                     stayDate: new DateTimeOffset(
                         checkIn.Date,
                         TimeSpan.Zero),
                     ct: ct);
-
-            if (cancellationVersion is not null)
+            if (cancellationVersion is null || cancellationVersion.CancellationPolicy is null)
+            {
+                return;
+            }
+            if (cancellationVersion is not null && cancellationVersion.CancellationPolicy?.CurrentVersion == cancellationVersion.Version)
             {
                 reservation.CancellationPolicySnapshot =
                     new ReservationCancellationPolicySnapshot
@@ -1338,19 +2404,22 @@ public sealed class ReservationService : IReservationService
             }
         }
 
-        if (request.DepositPolicyId.HasValue)
+        if (request.DepositPolicyId>0)
         {
             var depositVersion =
                 await _repository.GetDepositPolicyVersionAsync(
                     propertyId: request.PropertyId,
-                    policyId: request.DepositPolicyId.Value,
+                    policyId: request.DepositPolicyId,
                     versionId: request.DepositPolicyVersionId,
                     stayDate: new DateTimeOffset(
                         checkIn.Date,
                         TimeSpan.Zero),
                     ct: ct);
-
-            if (depositVersion is not null)
+            if (depositVersion is null || depositVersion.Deposit is null)
+            {
+                return;
+            }
+            if (depositVersion is not null &&depositVersion.Deposit.CurrentVersion == depositVersion.Version)
             {
                 var requiredDepositAmount =
                     depositVersion.Type == DepositType.Percentage
@@ -1496,6 +2565,106 @@ public sealed class ReservationService : IReservationService
         };
     }
 
+    private static void UpsertReservationRoomChargeItem(
+     Folio folio,
+     decimal amount,
+     decimal taxAmount,
+     string actorId,
+     DateTimeOffset now)
+    {
+         
+        var roomCharge =
+            folio.Items
+                .FirstOrDefault(
+                    x =>
+                        x.Type == FolioItemType.RoomCharge &&
+                        x.Status != FolioItemStatus.Voided &&
+                        x.SourceReference ==
+                            "RESERVATION_ROOM_CHARGE");
+
+         
+        roomCharge ??=
+            folio.Items
+                .FirstOrDefault(
+                    x =>
+                        x.Type == FolioItemType.RoomCharge &&
+                        x.Status != FolioItemStatus.Voided);
+
+         
+        if (roomCharge is null)
+        {
+            roomCharge =
+                new FolioItem
+                {
+                    Type =
+                        FolioItemType.RoomCharge,
+
+                    Description =
+                        "Reservation lodging total",
+
+                   
+                    Amount =
+                        Money(amount),
+
+                     
+                    Tax =
+                        Money(taxAmount),
+
+                    Source =
+                        FolioItemSource.Room,
+
+                    SourceReference =
+                        "RESERVATION_ROOM_CHARGE",
+
+                    Status =
+                        FolioItemStatus.Posted,
+
+                    PostedAt =
+                        now,
+
+                    CreatedAt =
+                        now,
+
+                    CreatedBy =
+                        actorId
+                };
+
+            folio.Items.Add(roomCharge);
+
+            return;
+        }
+
+       
+        roomCharge.Description =
+            "Reservation lodging total";
+
+        roomCharge.Amount =
+            Money(amount);
+
+        roomCharge.Tax =
+            Money(taxAmount);
+
+        roomCharge.Source =
+            FolioItemSource.Room;
+
+        roomCharge.SourceReference =
+            "RESERVATION_ROOM_CHARGE";
+
+        roomCharge.Status =
+            FolioItemStatus.Posted;
+
+        roomCharge.PostedAt =
+            now;
+
+        roomCharge.UpdatedAt =
+            now;
+
+        roomCharge.UpdatedBy =
+            actorId;
+    }
+
+
+
     private static void ReconcileFolio(Folio folio)
     {
         var grossPaid = folio.Payments
@@ -1511,7 +2680,21 @@ public sealed class ReservationService : IReservationService
         folio.Balance = Math.Max(0m, difference);
         folio.CreditBalance = Math.Max(0m, -difference);
     }
-    private static ReservationSummaryResponse MapSummary(Reservation x) => new() { Id = x.Id, PropertyId = x.PropertyId, GuestId = x.GuestId, GuestName = $"{x.Guest?.FirstName} {x.Guest?.LastName}".Trim(), Status = x.Status, CheckInDate = x.CheckInDate, CheckOutDate = x.CheckOutDate, TotalAmount = x.TotalAmount, RoomId = x.ReservationRooms.FirstOrDefault(r => r.IsCurrent)?.RoomId, RoomIds = x.ReservationRooms.Where(r => r.IsCurrent).Select(r => r.RoomId).ToList() };
+    private static ReservationSummaryResponse
+        MapSummary(Reservation x) => 
+        new()
+        { 
+            Id = x.Id,
+            PropertyId = x.PropertyId,
+            GuestId = x.GuestId,
+            GuestName = $"{x.Guest?.FirstName} {x.Guest?.LastName}".Trim(), 
+            Status = x.Status,
+            CheckInDate = x.CheckInDate, 
+            CheckOutDate = x.CheckOutDate,
+            TotalAmount = x.TotalAmount,
+            RoomId = x.ReservationRooms.FirstOrDefault(r => r.IsCurrent)?.RoomId,
+            RoomIds = x.ReservationRooms.Where(r => r.IsCurrent).Select(r => r.RoomId).ToList()
+        };
     private static ReservationResponse Map(Reservation x)
     {
         return new ReservationResponse
@@ -1559,6 +2742,32 @@ public sealed class ReservationService : IReservationService
                     IsCurrent = r.IsCurrent
                 }).ToList()
         };
+    }
+
+    private static string? ValidateRequiredPolicyIds(
+    CreateReservationRequest request)
+    {
+        if (request.CancellationPolicyId <= 0)
+        {
+            return "Cancellation policy is required.";
+        }
+
+        if (request.CancellationPolicyVersionId <= 0)
+        {
+            return "Cancellation policy version is required.";
+        }
+
+        if (request.DepositPolicyId <= 0)
+        {
+            return "Deposit policy is required.";
+        }
+
+        if (request.DepositPolicyVersionId <= 0)
+        {
+            return "Deposit policy version is required.";
+        }
+
+        return null;
     }
 
 
