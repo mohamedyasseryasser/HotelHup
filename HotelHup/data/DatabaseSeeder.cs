@@ -553,9 +553,11 @@ public static class DatabaseSeeder
         CancellationToken cancellationToken)
     {
         var reservation = await context.Reservations
-            .SingleOrDefaultAsync(
-                item => item.PropertyId == property.ID && item.GuestId == guest.Id,
-                cancellationToken);
+    .Where(item =>
+        item.PropertyId == property.ID &&
+        item.GuestId == guest.Id)
+    .OrderBy(item => item.Id)
+    .FirstOrDefaultAsync(cancellationToken);
 
         if (reservation is not null)
         {

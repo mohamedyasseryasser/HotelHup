@@ -94,7 +94,7 @@ public sealed class UpdateReservationRequest
     public int? RatePlanId { get; init; }
     public ICollection<UpdateReservationRoomRequest> Rooms { get; init; }
         = new List<UpdateReservationRoomRequest>();
-    public byte[]? ExpectedRowVersion { get; init; }
+    public string ExpectedRowVersion { get; init; }
 }
 
 public sealed class UpdateReservationRoomRequest
@@ -114,13 +114,13 @@ public sealed class CancelReservationRequest
     [Required]
     public bool OverridePolicy { get; init; }
     [Required, MinLength(2), MaxLength(500)] public string Reason { get; init; } = string.Empty;
-    public byte[]? ExpectedRowVersion { get; init; }
+    public string? ExpectedRowVersion { get; init; }
 }
 
 public sealed class ConfirmReservationRequest
 {
     [MaxLength(500)] public string? Reason { get; init; }
-    public byte[]? ExpectedRowVersion { get; init; }
+    public string? ExpectedRowVersion { get; init; }
 }
 
 public sealed class AssignRoomRequest
@@ -156,7 +156,7 @@ public sealed class CheckOutRequest
 
 public sealed class NoShowRequest
 {
-    public byte[]? ExpectedRowVersion { get; init; }
+    public string? ExpectedRowVersion { get; init; }
 
     [MaxLength(500)] public string? Reason { get; init; }
     [Required]
@@ -200,14 +200,19 @@ public class ReservationSummaryResponse
     public int GuestId { get; init; }
     public string GuestName { get; init; } = string.Empty;
     public ReservationStatus Status { get; init; }
+
+    public string RowVersion { get; init; } = string.Empty;
+
     public DateTime CheckInDate { get; init; }
     public DateTime CheckOutDate { get; init; }
     public decimal TotalAmount { get; init; }
     public int? RoomId { get; init; }
-    public IReadOnlyList<int> RoomIds { get; init; } = Array.Empty<int>();
+    public IReadOnlyList<int> RoomIds { get; init; }
+        = Array.Empty<int>();
 }
 
-public sealed class ReservationResponse : ReservationSummaryResponse
+public sealed class ReservationResponse
+    : ReservationSummaryResponse
 {
     public int Adults { get; init; }
     public int Children { get; init; }
@@ -216,9 +221,13 @@ public sealed class ReservationResponse : ReservationSummaryResponse
     public decimal DiscountAmount { get; init; }
     public decimal TaxAmount { get; init; }
     public decimal FeeAmount { get; init; }
-    public IReadOnlyList<ReservationRoomResponse> Rooms { get; init; } = Array.Empty<ReservationRoomResponse>();
-    public string RowVersion { get; init; } = string.Empty;
+
+    public IReadOnlyList<ReservationRoomResponse> Rooms { get; init; }
+        = Array.Empty<ReservationRoomResponse>();
+
+    // تم حذف RowVersion من هنا
 }
+
 
 public sealed class PagedReservationResponse
 {

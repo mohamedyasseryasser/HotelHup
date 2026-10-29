@@ -6,8 +6,7 @@ using HotelHup.CORE.Entities;
 using HotelHup.CORE.Enums;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
-using static HotelHup.APPLICATION.Constant.Permissions;
-
+ 
 namespace HotelHup.APPLICATION.services.implementation;
 
 public sealed class ReservationService : IReservationService    
@@ -26,7 +25,8 @@ public sealed class ReservationService : IReservationService
         AvailabilityRequest request, 
         CancellationToken ct = default)
     {
-        if (!HasScope(actor, request.PropertyId))
+ 
+        if (actor.PropertyId!=null && !HasScope(actor, request.PropertyId))
         {
             return Fail<IReadOnlyList<AvailabilityItemResponse>>("Property scope is invalid.", "PROPERTY_SCOPE_INVALID", 403);
         }
@@ -90,10 +90,7 @@ public sealed class ReservationService : IReservationService
             return Fail<PagedReservationResponse>("A valid property scope is required.", "PROPERTY_SCOPE_REQUIRED", 403);
 
         }
-    //    if (!propertyId.HasValue || !HasScope(actor, propertyId.Value))
-      //  {
-        //    return Fail<PagedReservationResponse>("A valid property scope is required.", "PROPERTY_SCOPE_REQUIRED", 403);
-        //}
+    
         var (items, total) = await _repository.SearchAsync(propertyId, request, ct);
         return Ok(new PagedReservationResponse 
         {
@@ -110,9 +107,10 @@ public sealed class ReservationService : IReservationService
         int id,
         CancellationToken ct = default)
     {
-        if (!HasScope(actor, propertyId))
+        var auth = await AuthorizeAsync(actor, propertyId, ct);
+        if (!auth.Success)
         {
-            return Fail<ReservationResponse>("Reservation was not found.", "RESERVATION_NOT_FOUND", 404);
+            return Fail<ReservationResponse>(auth.Message, "FORBIDDEN", auth.StatusCode);
         }
         var reservation = await _repository.GetByIdAsync(propertyId, id, false, ct);
         return reservation is null ?
@@ -368,8 +366,7 @@ public sealed class ReservationService : IReservationService
         {
             return Fail<ReservationResponse>(dates, "INVALID_DATES", 422);
         }
-        if (request.ExpectedRowVersion is not null &&
-            !reservation.RowVersion.SequenceEqual(request.ExpectedRowVersion))
+        if (request.ExpectedRowVersion is not null &&  !CheckRowVersion(request.ExpectedRowVersion,reservation.RowVersion))
         {
             return Fail<ReservationResponse>("The reservation was modified by another request.", "CONCURRENCY_CONFLICT", 409);
         }
@@ -884,10 +881,31 @@ public sealed class ReservationService : IReservationService
         {
             return Fail<ReservationActionResponse>("At least one current room assignment is required.", "ROOM_REQUIRED");
         }
+        var room = await _repository.GetRoomAsync(
+    propertyId,
+    assignment.RoomId,
+    tracking: true,
+    ct);
+
+        if (room is null)
+        {
+            return Fail<ReservationActionResponse>(
+                "Room was not found.",
+                "ROOM_NOT_FOUND",
+                404);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+ 
+
+        room.Status =
+            
+             RoomStatus.Available;
+
         assignment.IsCurrent = false;
-        assignment.ReleasedAt = DateTimeOffset.UtcNow;
+        assignment.ReleasedAt = now;
         assignment.AssignmentReason = "Released";
-      //  var taxes = await _repository.GetActiveTaxesAsync(propertyId, DateTimeOffset.UtcNow, ct);
+        //  var taxes = await _repository.GetActiveTaxesAsync(propertyId, DateTimeOffset.UtcNow, ct);
         RecalculateTotals(reservation);
         if (reservation.Folio is null)
         {
@@ -896,8 +914,7 @@ public sealed class ReservationService : IReservationService
                 "FOLIO_NOT_FOUND",
                 422);
         }
-        var now =
-    DateTimeOffset.UtcNow;
+        
         UpsertReservationRoomChargeItem(
             reservation.Folio,
             reservation.TotalAmount,
@@ -905,17 +922,7 @@ public sealed class ReservationService : IReservationService
             actor.Id,
             now);
 
-        reservation.Folio.Total =
-            reservation.TotalAmount;
-
-        ReconcileFolio(
-            reservation.Folio);
-
-        reservation.UpdatedAt =
-            now;
-
-        reservation.UpdatedBy =
-            actor.Id;
+      
 
         reservation.Adults = reservation.ReservationRooms.Where(x => x.IsCurrent).Sum(x => x.Adults);
         reservation.Children = reservation.ReservationRooms.Where(x => x.IsCurrent).Sum(x => x.Children);
@@ -1107,18 +1114,14 @@ public sealed class ReservationService : IReservationService
                 422);
         }
 
-        /*
-         * التاريخ يجب أن يكون بعد check-in
-         * وقبل تاريخ checkout الأصلي.
-         */
-        if (requestedDate <= reservation.CheckInDate.Date ||
-            requestedDate >= reservation.CheckOutDate.Date)
+        if (requestedDate > reservation.CheckOutDate.Date)
         {
             return Fail<ReservationActionResponse>(
-                "The early check-out date must be between check-in and the original check-out date.",
+                "The early check-out date cannot be after the original check-out date.",
                 "INVALID_EARLY_CHECKOUT_DATE",
                 422);
         }
+
 
         var currentAssignments =
             reservation.ReservationRooms
@@ -1135,12 +1138,12 @@ public sealed class ReservationService : IReservationService
 
         var oldTotal =
             reservation.TotalAmount;
+        var elapsedNights =
+            (requestedDate - reservation.CheckInDate.Date).Days;
 
-        var newNights =
-            (
-                requestedDate -
-                reservation.CheckInDate.Date
-            ).Days;
+        var chargeableNights = Math.Max(1, elapsedNights);
+
+
 
         var refundableByRatePlan =
             currentAssignments.All(
@@ -1151,16 +1154,7 @@ public sealed class ReservationService : IReservationService
         var rooms =
             new List<Room>();
 
-        /*
-         * حساب كل ReservationRoom.
-         *
-         * السعر يتم أخذه فقط من:
-         *
-         * RatePlanSnapshot.NightlyRate
-         *
-         * لا نستخدم السعر الحالي للغرفة
-         * أو نوع الغرفة أو RatePlanVersion.
-         */
+         
         foreach (var assignment in currentAssignments)
         {
             var room =
@@ -1180,10 +1174,7 @@ public sealed class ReservationService : IReservationService
 
             rooms.Add(room);
 
-            /*
-             * الـ snapshot يجب أن يكون موجودًا
-             * لكل ReservationRoom.
-             */
+           
             if (assignment.RatePlanSnapshot is null)
             {
                 return Fail<ReservationActionResponse>(
@@ -1192,10 +1183,7 @@ public sealed class ReservationService : IReservationService
                     422);
             }
 
-            /*
-             * السعر التاريخي المتفق عليه
-             * وقت إنشاء الحجز.
-             */
+             
             var nightlyRate =
                 assignment.RatePlanSnapshot.NightlyRate;
 
@@ -1210,27 +1198,22 @@ public sealed class ReservationService : IReservationService
             assignment.CheckOutDate =
                 requestedDate;
 
-            assignment.Nights =
-                newNights;
+            assignment.Nights = chargeableNights;
+
 
             assignment.NightlyRate =
                 nightlyRate;
 
-            assignment.BaseAmount =
-                Money(
-                    nightlyRate *
-                    newNights);
 
-            assignment.TotalAmount =
-                Money(
-                    assignment.BaseAmount -
-                    assignment.DiscountAmount +
-                    assignment.FeeAmount);
+            assignment.BaseAmount = Money(
+                nightlyRate * chargeableNights);
 
-            /*
-             * تحديث بيانات الـ snapshot
-             * مع عدد الليالي الجديد.
-             */
+            assignment.TotalAmount = Money(
+                assignment.BaseAmount
+                - assignment.DiscountAmount
+                + assignment.FeeAmount);
+
+ 
             assignment.RatePlanSnapshot.NightlyRate =
                 nightlyRate;
 
@@ -1245,11 +1228,7 @@ public sealed class ReservationService : IReservationService
             DateTimeOffset.UtcNow;
 
          
-
-        /*
-         * إعادة حساب إجمالي الحجز
-         * بعد تقليل عدد الليالي.
-         */
+ 
         RecalculateTotals(
             reservation);
         if (reservation.Folio is null)
@@ -1505,8 +1484,6 @@ public sealed class ReservationService : IReservationService
                     )));
     }
 
-
-
     public Task<ResponseStatus<ReservationActionResponse>>
     ExtendCheckoutAsync(
         User actor,
@@ -1610,30 +1587,31 @@ public sealed class ReservationService : IReservationService
                     404);
             }
 
-            var available =
-                await _repository.GetAvailableRoomsAsync(
+            var canExtend =
+                await _repository.IsRoomAvailableForExtensionAsync(
                     propertyId,
+                    assignment.RoomId,
+                    reservation.Id,
                     reservation.CheckOutDate.Date,
                     newCheckOut,
                     assignment.Adults,
                     assignment.Children,
-                    room.RoomTypeId,
-                    reservation.Id,
                     ct);
 
-            if (!available.Any(x => x.Id == assignment.RoomId))
+            if (!canExtend)
             {
                 return Fail<ReservationActionResponse>(
                     $"Room {assignment.RoomId} is not available for the requested extension.",
                     "ROOM_NO_LONGER_AVAILABLE",
                     409);
             }
+
         }
 
         var oldTotal = reservation.TotalAmount;
         var now = DateTimeOffset.UtcNow;
 
-        foreach (var assignment in currentAssignments)
+        foreach (var assignment in currentAssignments)                   
         {
             var nights =
                 (newCheckOut - reservation.CheckInDate.Date).Days;
@@ -1662,7 +1640,7 @@ public sealed class ReservationService : IReservationService
                     assignment.TotalAmount;
             }
         }
- 
+        reservation.CheckOutDate = newCheckOut;
 
         RecalculateTotals(reservation);
         if (reservation.Folio is null)
@@ -1699,11 +1677,7 @@ public sealed class ReservationService : IReservationService
 
         if (reservation.Folio is not null)
         {
-         //   EnsureReservationFolioBaseCharge(
-           //     reservation.Folio,
-             //   oldTotal,
-             //   now,
-              //  actor.Id);
+         
  
 
             reservation.Folio.Total =
@@ -1723,7 +1697,8 @@ public sealed class ReservationService : IReservationService
                     "Stay extended."));
     }
 
-    public async Task<ResponseStatus<IReadOnlyList<ReservationStatusHistoryResponse>>> GetStatusHistoryAsync(User actor, int propertyId, int id, CancellationToken ct = default)
+    public async Task<ResponseStatus<IReadOnlyList<ReservationStatusHistoryResponse>>> 
+        GetStatusHistoryAsync(User actor, int propertyId, int id, CancellationToken ct = default)
     {
         var reservation = await _repository.GetByIdAsync(propertyId, id, false, ct); if (reservation is null) return Fail<IReadOnlyList<ReservationStatusHistoryResponse>>("Reservation was not found.", "RESERVATION_NOT_FOUND", 404);
         return Ok<IReadOnlyList<ReservationStatusHistoryResponse>>(reservation.StatusHistory.OrderBy(x => x.ChangedAt).Select(x => new ReservationStatusHistoryResponse { Id = x.Id, FromStatus = x.FromStatus, ToStatus = x.ToStatus, Reason = x.Reason, ActorId = x.ActorId, ChangedAt = x.ChangedAt }).ToList());
@@ -1738,7 +1713,7 @@ public sealed class ReservationService : IReservationService
         int id,
         ReservationStatus target,
         string reason,
-        byte[]? expectedRowVersion,
+        string? expectedRowVersion,
         bool overridePolicy,
         bool isNoShow,
         CancellationToken ct)
@@ -1753,7 +1728,7 @@ public sealed class ReservationService : IReservationService
         if (property.Status != PropertyStatus.Active) return Fail<ReservationActionResponse>("Property is inactive.", "PROPERTY_INACTIVE", 409);
         if (reservation.Guest is null || !reservation.Guest.IsActive) return Fail<ReservationActionResponse>("Guest was not found or is inactive.", "GUEST_NOT_FOUND", 404);
 
-        if (expectedRowVersion is not null && !expectedRowVersion.SequenceEqual(reservation.RowVersion))
+        if (expectedRowVersion is not null && !CheckRowVersion(expectedRowVersion,reservation.RowVersion))
             return Fail<ReservationActionResponse>("The reservation was modified by another request.", "CONCURRENCY_CONFLICT", 409);
 
         var valid = target switch
@@ -1844,7 +1819,7 @@ public sealed class ReservationService : IReservationService
                     CreatedBy = actor.Id
                 });
                 reservation.Folio.Total += cancellationFee;
-             }
+            }
             if (reservation.Folio is not null) ReconcileFolio(reservation.Folio);
 
         }
@@ -1874,6 +1849,43 @@ public sealed class ReservationService : IReservationService
              }
             if (reservation.Folio is not null) ReconcileFolio(reservation.Folio);
 
+        }
+        //var now = DateTimeOffset.UtcNow;
+
+        if (target == ReservationStatus.Cancelled || isNoShow)
+        {
+            var currentAssignments = reservation.ReservationRooms
+                .Where(x => x.IsCurrent)
+                .ToList();
+
+            var requireInspection =
+                reservation.Property.Settings?
+                    .RequireInspectionBeforeAvailable == true;
+
+            foreach (var assignment in currentAssignments)
+            {
+                var room = await _repository.GetRoomAsync(
+                    propertyId,
+                    assignment.RoomId,
+                    tracking: true,
+                    ct);
+
+                if (room is null)
+                {
+                    return Fail<ReservationActionResponse>(
+                        "Room was not found.",
+                        "ROOM_NOT_FOUND",
+                        404);
+                }
+
+                 assignment.IsCurrent = false;
+                assignment.ReleasedAt = now;
+                assignment.AssignmentReason =
+                    target == ReservationStatus.Cancelled
+                        ? "Reservation cancelled"
+                        : "Reservation no-show";
+                 
+            }
         }
 
         var from = reservation.Status;
@@ -2193,9 +2205,7 @@ public sealed class ReservationService : IReservationService
                 .Where(x => x.IsCurrent)
                 .ToList();
 
-        /*
-         * الغرف تحتوي على السعر الصافي بدون ضرائب.
-         */
+      
         var netBaseAmount =
             Money(
                 currentLines.Sum(
@@ -2318,8 +2328,6 @@ public sealed class ReservationService : IReservationService
                             tax.Rate)));
     }
 
-   
-
     private static decimal CalculateTaxAmount(
     decimal taxableAmount,
     IEnumerable<Tax> taxes)
@@ -2335,10 +2343,6 @@ public sealed class ReservationService : IReservationService
                             0m,
                             tax.Rate)));
     }
-
-   
- 
-
 
     private async Task AddPolicySnapshotsAsync(
      Reservation reservation,
@@ -2663,8 +2667,6 @@ public sealed class ReservationService : IReservationService
             actorId;
     }
 
-
-
     private static void ReconcileFolio(Folio folio)
     {
         var grossPaid = folio.Payments
@@ -2689,7 +2691,9 @@ public sealed class ReservationService : IReservationService
             GuestId = x.GuestId,
             GuestName = $"{x.Guest?.FirstName} {x.Guest?.LastName}".Trim(), 
             Status = x.Status,
-            CheckInDate = x.CheckInDate, 
+            CheckInDate = x.CheckInDate,
+            RowVersion = Convert.ToBase64String(
+    x.RowVersion ?? Array.Empty<byte>()),
             CheckOutDate = x.CheckOutDate,
             TotalAmount = x.TotalAmount,
             RoomId = x.ReservationRooms.FirstOrDefault(r => r.IsCurrent)?.RoomId,
@@ -2720,7 +2724,7 @@ public sealed class ReservationService : IReservationService
             TotalAmount = x.TotalAmount,
 
             RowVersion = Convert.ToBase64String(
-                x.RowVersion ?? Array.Empty<byte>()),
+    x.RowVersion ?? Array.Empty<byte>()),
 
             Rooms = x.ReservationRooms.Select(r =>
                 new ReservationRoomResponse
@@ -2770,7 +2774,30 @@ public sealed class ReservationService : IReservationService
         return null;
     }
 
+    private static bool CheckRowVersion(
+   string expectedRowVersion,
+   byte[] actualRowVersion)
+    {
+        if (string.IsNullOrWhiteSpace(expectedRowVersion))
+        {
+            return false;
+        }
 
+        byte[] expectedBytes;
+
+        try
+        {
+            expectedBytes =
+                Convert.FromBase64String(expectedRowVersion);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+
+        return expectedBytes.SequenceEqual(
+            actualRowVersion ?? Array.Empty<byte>());
+    }
     private static ResponseStatus<T> Ok<T>(T data, string message = "", int status = 200) => new(data, message, status);
     private static ResponseStatus<T> Fail<T>(string message, int status = 400) => new(message: message, statusCode: status);
     private static ResponseStatus<T> Fail<T>(string message, string code, int status = 400) => new(message: message, statusCode: status, code: code);

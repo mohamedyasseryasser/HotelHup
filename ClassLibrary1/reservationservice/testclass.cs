@@ -203,13 +203,13 @@ public sealed class ReservationServiceComprehensiveTests
         // Assert
         Assert.That(result.Success, Is.True);
         Assert.That(result.Data, Is.Empty);
-        Assert.That(result.Message,Is.EqualTo("not has any room avaliable"));
+        Assert.That(result.Message, Is.EqualTo("not has any room avaliable"));
 
         repository.Verify(
-            p=>p.GetPropertyAsync(
-                PropertyId ,
+            p => p.GetPropertyAsync(
+                PropertyId,
                 It.IsAny<CancellationToken>()
-            ),Times.AtLeastOnce());
+            ), Times.AtLeastOnce());
 
         repository.Verify(
             x => x.GetAvailableRoomsAsync(
@@ -518,11 +518,11 @@ public sealed class ReservationServiceComprehensiveTests
             ReservationId);
 
         // Assert
- 
-         AssertFailure(result, 404, "RESERVATION_NOT_FOUND");
- 
+
+        AssertFailure(result, 404, "RESERVATION_NOT_FOUND");
+
     }
-    
+
     [Test]
     public async Task CreateAsync_rejects_when_property_is_missing()
     {
@@ -1328,6 +1328,477 @@ public sealed class ReservationServiceComprehensiveTests
         AssertFailure(result, 404, "RESERVATION_NOT_FOUND");
     }
 
+
+    [Test]
+    public async Task UpdateAsync_rejects_checked_out_reservation_without_saving()
+    {
+        // Arrange
+        var (service, repository, _) = CreateServiceWithManager();
+        InlineExecution(repository);
+
+        var reservation = Reservation(status: ReservationStatus.CheckedOut);
+
+        repository
+            .Setup(x => x.GetByIdAsync(
+                PropertyId,
+                ReservationId,
+                true,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(reservation);
+
+        // Act
+        var result = await service.UpdateAsync(
+            Actor(),
+            PropertyId,
+            ReservationId,
+            new UpdateReservationRequest
+            {
+                Adults = 2
+            });
+
+        // Assert
+        AssertFailure(result, 409, "INVALID_STATE_TRANSITION");
+
+        repository.Verify(
+            x => x.SaveChangesAsync(It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        repository.Verify(
+            x => x.GetGuestAsync(
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Test]
+    public async Task EarlyCheckoutAsync_rejects_reservation_that_is_not_checked_in()
+    {
+        // Arrange
+        var (service, repository, _) = CreateServiceWithManager();
+        InlineActionExecution(repository);
+
+        var reservation = Reservation(status: ReservationStatus.Confirmed);
+        reservation.Property = ActiveProperty();
+
+        repository
+            .Setup(x => x.GetByIdAsync(
+                PropertyId,
+                ReservationId,
+                true,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(reservation);
+
+        // Act
+        var result = await service.EarlyCheckoutAsync(
+            Actor(),
+            PropertyId,
+            ReservationId,
+            new EarlyCheckoutRequest
+            {
+                CheckOutDate = CheckIn.AddDays(1),
+                ManagerOverride = true,
+                Notes = "Test"
+            });
+
+        // Assert
+        AssertFailure(result, 409, "INVALID_STATE_TRANSITION");
+
+        repository.Verify(
+            x => x.PersistLifecycleAsync(
+                It.IsAny<Reservation>(),
+                It.IsAny<IReadOnlyCollection<Room>>(),
+                It.IsAny<IReadOnlyCollection<HousekeepingTask>?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Test]
+    public async Task ExtendCheckoutAsync_rejects_a_date_not_later_than_current_checkout()
+    {
+        // Arrange
+        var (service, repository, _) = CreateServiceWithManager();
+        InlineActionExecution(repository);
+
+        var reservation = Reservation(status: ReservationStatus.CheckedIn);
+        reservation.Property = ActiveProperty();
+        reservation.ReservationRooms.Add(new ReservationRoom
+        {
+            Id = 9,
+            RoomId = 1,
+            Adults = 1,
+            Children = 0,
+            IsCurrent = true
+        });
+
+        repository
+            .Setup(x => x.GetByIdAsync(
+                PropertyId,
+                ReservationId,
+                true,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(reservation);
+
+        // Act
+        var result = await service.ExtendCheckoutAsync(
+            Actor(),
+            PropertyId,
+            ReservationId,
+            new ExtendCheckoutRequest
+            {
+                NewCheckOutDate = reservation.CheckOutDate.AddDays(-1),
+                Reason = "Invalid extension"
+            });
+
+        // Assert
+        AssertFailure(result, 422, "INVALID_EXTENSION_DATE");
+
+        repository.Verify(
+            x => x.SaveChangesAsync(It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        repository.Verify(
+            x => x.GetRoomAsync(
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Test]
+    public async Task AssignRoomAsync_rejects_actor_without_reservation_permission()
+    {
+        // Arrange
+        var (service, repository, _) = CreateService();
+        InlineActionExecution(repository);
+
+        // CreateService configures no active role for the actor.
+        // Therefore authorization must stop before loading the reservation.
+        var request = new AssignRoomRequest
+        {
+            Rooms = new List<AssignRoomItemRequest>
+            {
+                new()
+                {
+                    RoomId = 1,
+                    RatePlanId = 1
+                }
+            }
+        };
+
+        // Act
+        var result = await service.AssignRoomAsync(
+            Actor(),
+            PropertyId,
+            ReservationId,
+            request);
+
+        // Assert
+        Assert.That(result.Success, Is.False);
+        Assert.That(result.StatusCode, Is.EqualTo(403));
+
+        repository.Verify(
+            x => x.GetByIdAsync(
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Test]
+    public async Task UpdateAsync_replaces_room_and_recalculates_all_amounts()
+    {
+        var (service, repository, _) = CreateServiceWithManager();
+        InlineExecution(repository);
+        var oldRoom = RoomWithType(1, 3, 100m);
+        var newRoom = RoomWithType(2, 3, 100m);
+        var reservation = Reservation(ReservationStatus.Pending);
+        reservation.Folio = new Folio { Status = FolioStatus.Open, Total = 360m, Balance = 360m };
+        reservation.ReservationRooms.Add(new ReservationRoom
+        {
+            Id = 11,
+            RoomId = 1,
+            Adults = 1,
+            Children = 0,
+            Nights = 3,
+            NightlyRate = 100m,
+            BaseAmount = 300m,
+            TotalAmount = 300m,
+            IsCurrent = true,
+            Room = oldRoom
+        });
+
+        repository.Setup(x => x.GetByIdAsync(PropertyId, ReservationId, true, It.IsAny<CancellationToken>())).ReturnsAsync(reservation);
+        repository.Setup(x => x.GetByIdAsync(PropertyId, ReservationId, false, It.IsAny<CancellationToken>())).ReturnsAsync((Reservation?)null);
+        repository.Setup(x => x.GetActiveTaxesAsync(PropertyId, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<Tax>());
+        repository.Setup(x => x.GetRoomAsync(PropertyId, 2, false, It.IsAny<CancellationToken>())).ReturnsAsync(newRoom);
+        repository.Setup(x => x.GetAvailableRoomsAsync(PropertyId, CheckIn, CheckOut, 2, 1, 3, ReservationId, It.IsAny<CancellationToken>())).ReturnsAsync(new[] { newRoom });
+        repository.Setup(x => x.GetRatePlanAsync(PropertyId, 3, 1, CheckIn, It.IsAny<CancellationToken>())).ReturnsAsync(RatePlanWithVersion(1, 3, 150m));
+        repository.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        var result = await service.UpdateAsync(Actor(), PropertyId, ReservationId, new UpdateReservationRequest
+        {
+            Rooms = new List<UpdateReservationRoomRequest>
+            {
+                new() { RoomId = 2, RoomTypeId = 3, RatePlanId = 1, Adults = 2, Children = 1, DiscountAmount = 20m, FeeAmount = 10m }
+            }
+        });
+
+        Assert.That(result.Success, Is.True);
+        Assert.That(reservation.TotalAmount, Is.EqualTo(440m));
+        Assert.That(reservation.BaseAmount, Is.EqualTo(450m));
+        Assert.That(reservation.TotalDiscountAmount, Is.EqualTo(20m));
+        Assert.That(reservation.TotalFeeAmount, Is.EqualTo(10m));
+        Assert.That(reservation.Adults, Is.EqualTo(2));
+        Assert.That(reservation.Children, Is.EqualTo(1));
+        Assert.That(reservation.ReservationRooms.Count(x => x.IsCurrent), Is.EqualTo(1));
+        Assert.That(reservation.ReservationRooms.Single(x => x.IsCurrent).Nights, Is.EqualTo(3));
+        Assert.That(reservation.ReservationRooms.Single(x => x.IsCurrent).BaseAmount, Is.EqualTo(450m));
+        Assert.That(reservation.Folio.Total, Is.EqualTo(440m));
+        repository.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task CancelAsync_calculates_fee_refund_and_balance()
+    {
+        var (service, repository, _) = CreateServiceWithManager();
+        InlineActionExecution(repository);
+        var property = ActiveProperty();
+        property.Settings = new PropertySettings { DefaultCurrency = "USD" };
+        var reservation = Reservation(ReservationStatus.Pending);
+        reservation.Property = property;
+        reservation.Guest = new Guest { Id = 10, IsActive = true };
+        reservation.TotalAmount = 500m;
+        reservation.Folio = new Folio
+        {
+            Status = FolioStatus.Open,
+            Total = 500m,
+            Payments = new List<Payment>
+            {
+                new() { Amount = 300m, Status = PaymentStatus.Paid, Refunds = new List<Refund>() }
+            }
+        };
+        reservation.CancellationPolicySnapshot = new ReservationCancellationPolicySnapshot
+        {
+            FreeCancellationHours = int.MaxValue,
+            CancellationFeePercentage = 10m,
+            FixedCancellationFee = 20m,
+            IsNonRefundable = false,
+            CutoffHours = 0
+        };
+
+        repository.Setup(x => x.GetByIdAsync(PropertyId, ReservationId, true, It.IsAny<CancellationToken>())).ReturnsAsync(reservation);
+        repository.Setup(x => x.GetPropertyAsync(PropertyId, It.IsAny<CancellationToken>())).ReturnsAsync(property);
+        repository.Setup(x => x.PersistTransitionAsync(reservation, It.IsAny<AuditLog>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        var result = await service.CancelAsync(Actor(), PropertyId, ReservationId, new CancelReservationRequest
+        {
+            Reason = "Guest cancellation",
+            OverridePolicy = false
+        });
+
+        Assert.That(result.Success, Is.True);
+        Assert.That(reservation.Status, Is.EqualTo(ReservationStatus.Cancelled));
+        Assert.That(result.Data!.CancellationFee, Is.EqualTo(70m));
+        Assert.That(result.Data.PaidAmount, Is.EqualTo(300m));
+        Assert.That(result.Data.RefundableAmount, Is.EqualTo(230m));
+        Assert.That(result.Data.HeldAmount, Is.EqualTo(70m));
+        Assert.That(reservation.Folio.Items.Single(x => x.Description == "Cancellation fee").Amount, Is.EqualTo(70m));
+        repository.Verify(x => x.PersistTransitionAsync(reservation, It.IsAny<AuditLog>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task NoShowAsync_calculates_noshow_charge_from_current_room_rate()
+    {
+        var (service, repository, _) = CreateServiceWithManager();
+        InlineActionExecution(repository);
+        var property = ActiveProperty();
+        property.Settings = new PropertySettings { HotelDayClosingTime = TimeSpan.Zero };
+        var reservation = Reservation(ReservationStatus.Confirmed);
+        reservation.Property = property;
+        reservation.Guest = new Guest { IsActive = true };
+        reservation.TotalAmount = 360m;
+        reservation.Folio = new Folio { Status = FolioStatus.Open, Total = 360m, Payments = new List<Payment>() };
+        reservation.ReservationRooms.Add(new ReservationRoom { RoomId = 1, IsCurrent = true, NightlyRate = 120m });
+
+        repository.Setup(x => x.GetByIdAsync(PropertyId, ReservationId, true, It.IsAny<CancellationToken>())).ReturnsAsync(reservation);
+        repository.Setup(x => x.GetPropertyAsync(PropertyId, It.IsAny<CancellationToken>())).ReturnsAsync(property);
+        repository.Setup(x => x.PersistTransitionAsync(reservation, It.IsAny<AuditLog>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        var result = await service.NoShowAsync(Actor(), PropertyId, ReservationId, new NoShowRequest
+        {
+            OverridePolicy = true,
+            Reason = "Guest did not arrive"
+        });
+
+        Assert.That(result.Success, Is.True);
+        Assert.That(reservation.Status, Is.EqualTo(ReservationStatus.NoShow));
+        Assert.That(result.Data!.NoShowCharge, Is.EqualTo(120m));
+        Assert.That(reservation.Folio.Items.Single(x => x.Description == "No-show charge").Amount, Is.EqualTo(120m));
+        repository.Verify(x => x.PersistTransitionAsync(reservation, It.IsAny<AuditLog>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task AssignRoomAsync_adds_room_and_recalculates_totals()
+    {
+        var (service, repository, _) = CreateServiceWithManager();
+        InlineActionExecution(repository);
+        var reservation = Reservation(ReservationStatus.Pending);
+        reservation.Folio = new Folio { Status = FolioStatus.Open, Total = 0m, Balance = 0m };
+        var room = RoomWithType(5, 3, 100m);
+        repository.Setup(x => x.GetByIdAsync(PropertyId, ReservationId, true, It.IsAny<CancellationToken>())).ReturnsAsync(reservation);
+        repository.Setup(x => x.GetRoomAsync(PropertyId, 5, false, It.IsAny<CancellationToken>())).ReturnsAsync(room);
+        repository.Setup(x => x.GetAvailableRoomsAsync(PropertyId, CheckIn, CheckOut, 2, 1, 3, ReservationId, It.IsAny<CancellationToken>())).ReturnsAsync(new[] { room });
+        repository.Setup(x => x.GetRatePlanAsync(PropertyId, 3, 1, CheckIn, It.IsAny<CancellationToken>())).ReturnsAsync(RatePlanWithVersion(1, 3, 120m));
+        repository.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        var result = await service.AssignRoomAsync(Actor(), PropertyId, ReservationId, new AssignRoomRequest
+        {
+            Reason = "Room selected",
+            Rooms = new List<AssignRoomItemRequest> { new() { RoomId = 5, RatePlanId = 1, Adults = 2, Children = 1 } }
+        });
+
+        Assert.That(result.Success, Is.True);
+        Assert.That(reservation.ReservationRooms.Single().Nights, Is.EqualTo(3));
+        Assert.That(reservation.ReservationRooms.Single().NightlyRate, Is.EqualTo(120m));
+        Assert.That(reservation.ReservationRooms.Single().BaseAmount, Is.EqualTo(360m));
+        Assert.That(reservation.TotalAmount, Is.EqualTo(360m));
+        Assert.That(reservation.Adults, Is.EqualTo(2));
+        Assert.That(reservation.Children, Is.EqualTo(1));
+        Assert.That(reservation.Folio!.Total, Is.EqualTo(360m));
+        repository.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task ReleaseRoomAsync_removes_one_of_two_rooms_and_recalculates_totals()
+    {
+        var (service, repository, _) = CreateServiceWithManager();
+        InlineActionExecution(repository);
+        var reservation = Reservation(ReservationStatus.Pending);
+        reservation.Folio = new Folio { Status = FolioStatus.Open, Total = 600m, Balance = 600m };
+        reservation.ReservationRooms.Add(new ReservationRoom { Id = 9, RoomId = 1, Adults = 1, IsCurrent = true, Nights = 3, NightlyRate = 100m, BaseAmount = 300m, TotalAmount = 300m });
+        reservation.ReservationRooms.Add(new ReservationRoom { Id = 10, RoomId = 2, Adults = 1, IsCurrent = true, Nights = 3, NightlyRate = 100m, BaseAmount = 300m, TotalAmount = 300m });
+        repository.Setup(x => x.GetByIdAsync(PropertyId, ReservationId, true, It.IsAny<CancellationToken>())).ReturnsAsync(reservation);
+        repository.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        var result = await service.ReleaseRoomAsync(Actor(), PropertyId, ReservationId, 9);
+
+        Assert.That(result.Success, Is.True);
+        Assert.That(reservation.ReservationRooms.Single(x => x.Id == 9).IsCurrent, Is.False);
+        Assert.That(reservation.ReservationRooms.Single(x => x.Id == 10).IsCurrent, Is.True);
+        Assert.That(reservation.TotalAmount, Is.EqualTo(300m));
+        Assert.That(reservation.Adults, Is.EqualTo(1));
+        Assert.That(reservation.Folio!.Total, Is.EqualTo(300m));
+        repository.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task CheckOutAsync_closes_folio_releases_room_and_creates_housekeeping_task()
+    {
+        var (service, repository, _) = CreateServiceWithManager();
+        var property = ActiveProperty();
+        property.Settings = new PropertySettings { RequireFullPaymentBeforeCheckOut = false, RequireInspectionBeforeAvailable = false };
+        var reservation = Reservation(ReservationStatus.CheckedIn);
+        reservation.Property = property;
+        reservation.Folio = new Folio { Status = FolioStatus.Open, Total = 360m, Balance = 0m };
+        reservation.ReservationRooms.Add(new ReservationRoom { RoomId = 1, IsCurrent = true });
+        var room = RoomWithType(1, 3, 100m);
+        repository.Setup(x => x.GetByIdAsync(PropertyId, ReservationId, true, It.IsAny<CancellationToken>())).ReturnsAsync(reservation);
+        repository.Setup(x => x.GetRoomAsync(PropertyId, 1, true, It.IsAny<CancellationToken>())).ReturnsAsync(room);
+        repository.Setup(x => x.PersistLifecycleAsync(reservation, It.IsAny<IReadOnlyCollection<Room>>(), It.IsAny<IReadOnlyCollection<HousekeepingTask>?>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        var result = await service.CheckOutAsync(Actor(), PropertyId, ReservationId, new CheckOutRequest { Notes = "Checked out" });
+
+        Assert.That(result.Success, Is.True);
+        Assert.That(reservation.Status, Is.EqualTo(ReservationStatus.CheckedOut));
+        Assert.That(room.Status, Is.EqualTo(RoomStatus.Available));
+        Assert.That(reservation.ReservationRooms.Single().IsCurrent, Is.False);
+        Assert.That(reservation.Folio.Status, Is.EqualTo(FolioStatus.Closed));
+        repository.Verify(x => x.PersistLifecycleAsync(reservation, It.Is<IReadOnlyCollection<Room>>(r => r.Count == 1 && r.Single() == room), It.Is<IReadOnlyCollection<HousekeepingTask>?>(t => t != null && t.Count == 1 && t.Single().RoomId == 1), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task EarlyCheckoutAsync_recalculates_historical_rate_and_refund()
+    {
+        var (service, repository, user) = CreateServiceWithManager();
+        InlineActionExecution(repository);
+        var today = DateTime.UtcNow.Date;
+        var property = ActiveProperty();
+        property.Settings = new PropertySettings { RequireInspectionBeforeAvailable = false, RequireFullPaymentBeforeCheckOut = false };
+        var reservation = new Reservation { Id = ReservationId, PropertyId = PropertyId, GuestId = 10, Status = ReservationStatus.CheckedIn, CheckInDate = today.AddDays(-1), CheckOutDate = today.AddDays(2), Property = property, Folio = new Folio { Status = FolioStatus.Open, Total = 360m, Payments = new List<Payment> { new() { Amount = 300m, Status = PaymentStatus.Paid, Refunds = new List<Refund>() } } } };
+        var assignment = new ReservationRoom { RoomId = 1, IsCurrent = true, Nights = 3, NightlyRate = 120m, BaseAmount = 360m, TotalAmount = 360m, RatePlanSnapshot = new ReservationRoomRatePlanSnapshot { NightlyRate = 120m, IsRefundable = true } };
+        reservation.ReservationRooms.Add(assignment);
+        var room = RoomWithType(1, 3, 999m);
+        repository.Setup(x => x.GetByIdAsync(PropertyId, ReservationId, true, It.IsAny<CancellationToken>())).ReturnsAsync(reservation);
+        repository.Setup(x => x.GetRoomAsync(PropertyId, 1, true, It.IsAny<CancellationToken>())).ReturnsAsync(room);
+        repository.Setup(x => x.PersistLifecycleAsync(reservation, It.IsAny<IReadOnlyCollection<Room>>(), It.IsAny<IReadOnlyCollection<HousekeepingTask>?>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        var result = await service.EarlyCheckoutAsync(Actor(), PropertyId, ReservationId, new EarlyCheckoutRequest { CheckOutDate = today, Notes = "Early departure" });
+
+        Assert.That(result.Success, Is.True);
+        Assert.That(assignment.Nights, Is.EqualTo(1));
+        Assert.That(assignment.NightlyRate, Is.EqualTo(120m));
+        Assert.That(assignment.BaseAmount, Is.EqualTo(120m));
+        Assert.That(reservation.TotalAmount, Is.EqualTo(120m));
+        Assert.That(result.Data!.PaidAmount, Is.EqualTo(300m));
+        Assert.That(result.Data.RefundableAmount, Is.EqualTo(240m));
+        Assert.That(reservation.Status, Is.EqualTo(ReservationStatus.CheckedOut));
+        Assert.That(room.Status, Is.EqualTo(RoomStatus.Available));
+        Assert.That(assignment.IsCurrent, Is.False);
+        repository.Verify(x => x.PersistLifecycleAsync(reservation, It.IsAny<IReadOnlyCollection<Room>>(), It.IsAny<IReadOnlyCollection<HousekeepingTask>?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task ExtendCheckoutAsync_recalculates_amount_for_extra_nights()
+    {
+        var (service, repository, _) = CreateServiceWithManager();
+        InlineActionExecution(repository);
+        var reservation = Reservation(ReservationStatus.CheckedIn);
+        reservation.Property = ActiveProperty();
+        reservation.Folio = new Folio { Status = FolioStatus.Open, Total = 240m, Balance = 240m };
+        var assignment = new ReservationRoom { RoomId = 1, IsCurrent = true, Adults = 1, Children = 0, Nights = 2, NightlyRate = 120m, BaseAmount = 240m, TotalAmount = 240m, RatePlanSnapshot = new ReservationRoomRatePlanSnapshot { NightlyRate = 120m } };
+        reservation.ReservationRooms.Add(assignment);
+        var room = RoomWithType(1, 3, 999m);
+        var newCheckout = CheckOut.AddDays(2);
+        repository.Setup(x => x.GetByIdAsync(PropertyId, ReservationId, true, It.IsAny<CancellationToken>())).ReturnsAsync(reservation);
+        repository.Setup(x => x.GetRoomAsync(PropertyId, 1, true, It.IsAny<CancellationToken>())).ReturnsAsync(room);
+        repository.Setup(x => x.GetAvailableRoomsAsync(PropertyId, CheckOut, newCheckout, 1, 0, 3, ReservationId, It.IsAny<CancellationToken>())).ReturnsAsync(new[] { room });
+        repository.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+        var result = await service.ExtendCheckoutAsync(Actor(), PropertyId, ReservationId, new ExtendCheckoutRequest { NewCheckOutDate = newCheckout, Reason = "Extra nights" });
+
+        Assert.That(result.Success, Is.True);
+        Assert.That(assignment.Nights, Is.EqualTo(5));
+        Assert.That(assignment.NightlyRate, Is.EqualTo(120m));
+        Assert.That(assignment.BaseAmount, Is.EqualTo(600m));
+        Assert.That(assignment.TotalAmount, Is.EqualTo(600m));
+        Assert.That(reservation.TotalAmount, Is.EqualTo(600m));
+        Assert.That(reservation.Folio!.Total, Is.EqualTo(600m));
+        Assert.That(result.Data!.Status, Is.EqualTo(ReservationStatus.CheckedIn));
+        repository.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task GetStatusHistoryAsync_returns_ordered_history_values()
+    {
+        var (service, repository, _) = CreateService();
+        var reservation = Reservation(ReservationStatus.CheckedIn);
+        reservation.StatusHistory.Add(new ReservationStatusHistory { Id = 2, FromStatus = ReservationStatus.Confirmed, ToStatus = ReservationStatus.CheckedIn, Reason = "Check in", ActorId = "actor-1", ChangedAt = DateTimeOffset.UtcNow.AddMinutes(1) });
+        reservation.StatusHistory.Add(new ReservationStatusHistory { Id = 1, FromStatus = ReservationStatus.Pending, ToStatus = ReservationStatus.Confirmed, Reason = "Confirm", ActorId = "actor-1", ChangedAt = DateTimeOffset.UtcNow });
+        repository.Setup(x => x.GetByIdAsync(PropertyId, ReservationId, false, It.IsAny<CancellationToken>())).ReturnsAsync(reservation);
+
+        var result = await service.GetStatusHistoryAsync(Actor(), PropertyId, ReservationId);
+
+        Assert.That(result.Success, Is.True);
+        Assert.That(result.Data, Has.Count.EqualTo(2));
+        Assert.That(result.Data![0].Id, Is.EqualTo(1));
+        Assert.That(result.Data[0].ToStatus, Is.EqualTo(ReservationStatus.Confirmed));
+        Assert.That(result.Data[1].Id, Is.EqualTo(2));
+        Assert.That(result.Data[1].ToStatus, Is.EqualTo(ReservationStatus.CheckedIn));
+    }
+
     private static (
         ReservationService Service,
         Mock<IReservationRepository> Repository,
@@ -1429,6 +1900,10 @@ public sealed class ReservationServiceComprehensiveTests
             GuestId = 10,
             CheckInDate = CheckIn,
             CheckOutDate = CheckOut,
+            CancellationPolicyId = 1,
+            CancellationPolicyVersionId = 1,
+            DepositPolicyId = 1,
+            DepositPolicyVersionId = 1,
             createReservationRoomRequests = rooms.ToList()
         };
 
@@ -1512,6 +1987,40 @@ public sealed class ReservationServiceComprehensiveTests
             .ReturnsAsync(new Guest
             {
                 Id = 10,
+                IsActive = true
+            });
+
+        repository
+            .Setup(x => x.GetCancellationPolicyVersionAsync(
+                PropertyId, 1, 1, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CancellationPolicyVersion
+            {
+                Id = 1,
+                CancellationPolicyId = 1,
+                Version = 1,
+                ValidFrom = DateTimeOffset.MinValue,
+                ValidTo = null,
+                Rules = "{}",
+                FreeCancellationHours = 24,
+                CancellationFeePercentage = 10m,
+                FixedCancellationFee = 20m,
+                CutoffHours = 24
+            });
+
+        repository
+            .Setup(x => x.GetDepositPolicyVersionAsync(
+                PropertyId, 1, 1, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DepositPolicyVersion
+            {
+                Id = 1,
+                DepositId = 1,
+                Version = 1,
+                Name = "Deposit",
+                Type = DepositType.FixedAmount,
+                Amount = 0m,
+                Percentage = 0m,
+                ValidFrom = DateTimeOffset.MinValue,
+                ValidTo = null,
                 IsActive = true
             });
     }

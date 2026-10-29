@@ -30,6 +30,17 @@ namespace HotelHup.APPLICATION.interfacesrepo
     AuditLog audit,
     CancellationToken ct = default);
         Task PersistLifecycleAsync(Reservation reservation, IReadOnlyCollection<Room> rooms, IReadOnlyCollection<HousekeepingTask>? housekeepingTasks = null, CancellationToken ct = default);
+        Task<bool> IsRoomAvailableForExtensionAsync(
+        int propertyId,
+        int roomId,
+        int reservationId,
+        DateTime from,
+        DateTime to,
+        int adults,
+        int children,
+        CancellationToken ct = default);
+
+
     }
 
 

@@ -97,6 +97,10 @@ public sealed class ReservationRepository : IReservationRepository
         //get rooms are active
         //check num of childern and adults
         //check double reservation
+        //---------------0--------------------0---------------
+         // 10-----------12-----14------------15------------16--------17-------18
+         
+
         var blockingStatuses = new[] { ReservationStatus.Pending, ReservationStatus.Confirmed, ReservationStatus.CheckedIn };
         var occupiedRoomIds = _context.ReservationRooms.Where(x => x.IsCurrent && x.Reservation != null &&
             x.Reservation.PropertyId == propertyId && blockingStatuses.Contains(x.Reservation.Status) &&
@@ -110,6 +114,59 @@ public sealed class ReservationRepository : IReservationRepository
                         x.RoomType.IsActive && x.RoomType.MaxAdults >= adults && x.RoomType.MaxChildren >= children &&
                         !occupiedRoomIds.Contains(x.Id)).OrderBy(x => x.RoomNumber).ToListAsync(ct);
     }
+
+    public async Task<bool> IsRoomAvailableForExtensionAsync(
+      int propertyId,
+      int roomId,
+      int reservationId,
+      DateTime from,
+      DateTime to,
+      int adults,
+      int children,
+      CancellationToken ct = default)
+    {
+        var room = await _context.Rooms
+            .AsNoTracking()
+            .Include(x => x.RoomType)
+            .SingleOrDefaultAsync(
+                x =>
+                    x.Id == roomId &&
+                    x.property_id == propertyId &&
+                    x.IsActive &&
+                    x.RoomType != null &&
+                    x.RoomType.IsActive &&
+                    x.RoomType.MaxAdults >= adults &&
+                    x.RoomType.MaxChildren >= children,
+                ct);
+
+        if (room is null)
+        {
+            return false;
+        }
+
+        var blockingStatuses = new[]
+        {
+        ReservationStatus.Pending,
+        ReservationStatus.Confirmed,
+        ReservationStatus.CheckedIn
+    };
+
+        var hasConflictingReservation =
+            await _context.ReservationRooms.AnyAsync(
+                x =>
+                    x.IsCurrent &&
+                    x.RoomId == roomId &&
+                    x.Reservation != null &&
+                    x.ReservationId != reservationId &&
+                    blockingStatuses.Contains(x.Reservation.Status) &&
+                    x.CheckInDate < to &&
+                    x.CheckOutDate > from,
+                ct);
+
+        return !hasConflictingReservation;
+    }
+
+
 
     public async Task<Reservation?> GetByIdAsync(
         int propertyId,
@@ -228,19 +285,25 @@ public sealed class ReservationRepository : IReservationRepository
     public async Task PersistLifecycleAsync(Reservation reservation,
         IReadOnlyCollection<Room> rooms, IReadOnlyCollection<HousekeepingTask>? housekeepingTasks = null, CancellationToken ct = default)
     {
-        await using var tx = await _context.Database.BeginTransactionAsync(ct);
+        var currenttrancestion = _context.Database.CurrentTransaction is null;
+
+        await using var tx = currenttrancestion ? await _context.Database.BeginTransactionAsync(ct) : null;
         try
         {
             _context.Reservations.Update(reservation);
             foreach (var room in rooms) _context.Rooms.Update(room);
             if (housekeepingTasks is not null && housekeepingTasks.Count > 0) _context.HousekeepingTasks.AddRange(housekeepingTasks);
             await _context.SaveChangesAsync(ct);
-            await tx.CommitAsync(ct);
+            if (tx is not null)
+            {
+                await tx.CommitAsync(ct);
+            } 
         }
         catch
         {
-            await tx.RollbackAsync(CancellationToken.None);
-            throw;
+            if (tx is not null) {
+                await tx.RollbackAsync(CancellationToken.None);
+            } throw;
         }
     }
     public async Task PersistTransitionAsync(
@@ -248,8 +311,12 @@ public sealed class ReservationRepository : IReservationRepository
     AuditLog audit,
     CancellationToken ct = default)
     {
-        await using var tx =
-            await _context.Database.BeginTransactionAsync(ct);
+        var ownsTransaction =
+            _context.Database.CurrentTransaction is null;
+
+        await using var tx = ownsTransaction
+            ? await _context.Database.BeginTransactionAsync(ct)
+            : null;
 
         try
         {
@@ -260,13 +327,22 @@ public sealed class ReservationRepository : IReservationRepository
 
             await _context.SaveChangesAsync(ct);
 
-            await tx.CommitAsync(ct);
+            if (tx is not null)
+            {
+                await tx.CommitAsync(ct);
+            }
         }
         catch
         {
-            await tx.RollbackAsync(CancellationToken.None);
+            if (tx is not null)
+            {
+                await tx.RollbackAsync(
+                    CancellationToken.None);
+            }
+
             throw;
         }
     }
+
 
 }
