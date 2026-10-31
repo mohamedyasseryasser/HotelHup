@@ -169,8 +169,8 @@ public sealed class ReservationSearchRequest
     public ReservationStatus? Status { get; init; }
     public DateTime? From { get; init; }
     public DateTime? To { get; init; }
-    public int? GuestId { get; init; }
-    public int? RoomId { get; init; }
+    public string? Guestphone { get; init; }
+     public string? RoomNumber { get; init; }
     public BookingSource? Source { get; init; }
     [Range(1, 100)] public int PageSize { get; init; } = 20;
     [Range(1, int.MaxValue)] public int Page { get; init; } = 1;

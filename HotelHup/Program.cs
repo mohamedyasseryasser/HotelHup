@@ -115,51 +115,45 @@ public class Program
         {
             AddPermissionPolicies(options);
         });
-
         // Repositories
         builder.Services.AddScoped<IAuthRepository, AuthRepository>();
-        builder.Services.AddScoped<IPropertyRepository, PropertyRepository>();
-
-        builder.Services.AddScoped<
-            IPropertyCancellationRepo,
-            PropertycancellationRepo>();
-
-        builder.Services.AddScoped<
-            IPropertyDepositRepo,
-            PropertyDepositRepo>();
-
-        builder.Services.AddScoped<IPropertyTaxRepo, PropertyTaxRepo>();
         builder.Services.AddScoped<IUserRepository, UserRepository>();
+        builder.Services.AddScoped<IPropertyRepository, PropertyRepository>();
+        builder.Services.AddScoped<IPropertyCancellationRepo, PropertycancellationRepo>();
+        builder.Services.AddScoped<IPropertyDepositRepo, PropertyDepositRepo>();
+        builder.Services.AddScoped<IPropertyTaxRepo, PropertyTaxRepo>();
         builder.Services.AddScoped<IReservationRepository, ReservationRepository>();
-        builder.Services.AddScoped<IRoomTypeRepository, RoomTypeRepository>();
+        builder.Services.AddScoped<IGuestRepository, GuestRepository>();
         builder.Services.AddScoped<IRoomRepository, RoomRepository>();
+        builder.Services.AddScoped<IRoomTypeRepository, RoomTypeRepository>();
         builder.Services.AddScoped<IRatePlanRepository, RatePlanRepository>();
         builder.Services.AddScoped<IFolioRepository, FolioRepository>();
         builder.Services.AddScoped<IServiceRepository, ServiceRepository>();
-        builder.Services.AddScoped<IGuestRepository, GuestRepository>();
-        // Application Services
+        builder.Services.AddScoped<IPaymentRepository, PaymentRepository>();
+        builder.Services.AddScoped<IExpenseRepository, ExpenseRepository>();
+        builder.Services.AddScoped<IHousekeepingRepository, HousekeepingRepository>();
+        builder.Services.AddScoped<IReportRepository, ReportRepository>();
+
+        // Application services
         builder.Services.AddScoped<IAuthService, AuthService>();
-
-        builder.Services.AddScoped<
-            ICancellationPolicyService,
-            Cancellationpolicyservice>();
-
-        builder.Services.AddScoped<
-            IPropertyDepositService,
-            propertydepositservicecs>();
-
-        builder.Services.AddScoped<IPropertyService, PropertyService>();
-        builder.Services.AddScoped<IPropertyTax, PropertyTax>();
         builder.Services.AddScoped<ITokenService, TokenService>();
         builder.Services.AddScoped<IUserService, UserService>();
+        builder.Services.AddScoped<IPropertyService, PropertyService>();
+        builder.Services.AddScoped<ICancellationPolicyService, Cancellationpolicyservice>();
+        builder.Services.AddScoped<IPropertyDepositService, propertydepositservicecs>();
+        builder.Services.AddScoped<IPropertyTax, PropertyTax>();
+        builder.Services.AddScoped<IReservationService, ReservationService>();
+        builder.Services.AddScoped<IGuestService, GuestService>();
         builder.Services.AddScoped<IRoomService, RoomService>();
         builder.Services.AddScoped<IRoomTypeService, RoomTypeService>();
         builder.Services.AddScoped<IRatePlanService, RatePlanService>();
         builder.Services.AddScoped<IFolioService, FolioService>();
         builder.Services.AddScoped<IServiceService, ServiceService>();
-        builder.Services.AddScoped<IReservationService, ReservationService>();
+        builder.Services.AddScoped<IPaymentService, PaymentService>();
+        builder.Services.AddScoped<IExpenseService, ExpenseService>();
+        builder.Services.AddScoped<IHousekeepingService, HousekeepingService>();
+        builder.Services.AddScoped<IReportService, ReportService>();
         builder.Services.AddScoped<ISystemActorProvider, SystemActorProvider>();
-        builder.Services.AddScoped<IGuestService, GuestService>();
         builder.Services.AddCors(options =>
             options.AddPolicy(
                 "AngularPolicy",

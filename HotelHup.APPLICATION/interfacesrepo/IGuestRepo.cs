@@ -11,6 +11,8 @@ namespace HotelHup.APPLICATION.interfacesrepo
 {
     public interface IGuestRepository
     {
+        Task<Guest?> getbyphone(string phone, CancellationToken ct = default);
+
         Task<Guest?> GetByIdAsync(int id, CancellationToken ct = default);
         Task<Guest?> GetTrackedByIdAsync(int id, int propertyid,CancellationToken ct = default);
         Task<(IReadOnlyList<GuestListItemResponse> Items, int TotalCount)> GetListAsync(GuestListRequest request, int propertyid,CancellationToken ct = default);

@@ -43,8 +43,23 @@ namespace HotelHup.INFRASTRUCTURE.repos
                     ct);
         }
 
-        public Task<Folio?> GetForUpdateAsync(int id, CancellationToken ct = default) => GetByIdAsync(id, true, ct);
-
+     //   public Task<Folio?> GetForUpdateAsync(int id, CancellationToken ct = default) => GetByIdAsync(id, true, ct);
+        public async Task<Folio?> GetForUpdateAsync(
+    int folioId,
+    CancellationToken ct = default)
+        {
+            return await _context.Folios
+                .FromSqlInterpolated($"""
+            SELECT *
+            FROM Folios WITH (UPDLOCK, ROWLOCK)
+            WHERE id = {folioId}
+            """)
+                .Include(x => x.Reservation)
+                .Include(x => x.Items.OrderByDescending(i => i.PostedAt))
+                .Include(x => x.Payments)
+                    .ThenInclude(x => x.Refunds)
+                .SingleOrDefaultAsync(ct);
+        }
         public async Task<(IReadOnlyList<FolioItem> Items, int TotalCount)> GetItemsAsync(
             int folioId, int pageNumber, int pageSize, CancellationToken ct = default)
         {

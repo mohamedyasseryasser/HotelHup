@@ -216,21 +216,27 @@ public sealed class ReservationRepository : IReservationRepository
     }
 
 
-    public async Task<(IReadOnlyList<Reservation> Items, int TotalCount)> SearchAsync(int? propertyId, ReservationSearchRequest request, CancellationToken ct = default)
+    public async Task<(IReadOnlyList<Reservation> Items, int TotalCount)> 
+        SearchAsync(int? propertyId, ReservationSearchRequest request, CancellationToken ct = default)
     {
         var query = _context.Reservations.AsNoTracking();
         if (propertyId.HasValue) { query.Where(x => x.PropertyId == propertyId); }
         if (request.Status.HasValue) query = query.Where(x => x.Status == request.Status.Value);
         if (request.From.HasValue) query = query.Where(x => x.CheckOutDate > request.From.Value.Date);
         if (request.To.HasValue) query = query.Where(x => x.CheckInDate < request.To.Value.Date.AddDays(1));
-        if (request.GuestId.HasValue) query = query.Where(x => x.GuestId == request.GuestId.Value);
+        if (request.Guestphone!=null && string.IsNullOrEmpty(request.Guestphone)) 
+            query = query.Where(x =>x.Guest!=null  && x.Guest.Phone!=null && x.Guest.Phone.ToLower() == Normalize(request.Guestphone));
         if (request.Source.HasValue) query = query.Where(x => x.Source == request.Source.Value);
-        if (request.RoomId.HasValue) query = query.Where(x => x.ReservationRooms.Any(r => r.RoomId == request.RoomId.Value && r.IsCurrent));
+        if (request.RoomNumber!=null && string.IsNullOrEmpty(request.RoomNumber)) query = 
+                query.Where(x => x.ReservationRooms.Any(r => r.Room!=null 
+                && r.Room.RoomNumber.ToLower() ==Normalize(request.RoomNumber)  && r.IsCurrent));
         var total = await query.CountAsync(ct);
         var items = await query.Include(x => x.Guest).Include(x => x.ReservationRooms)
             .OrderByDescending(x => x.Id).Skip((request.Page - 1) * request.PageSize).Take(request.PageSize).ToListAsync(ct);
         return (items, total);
     }
+    private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
+
 
     public async Task AddAsync(
         Reservation reservation,

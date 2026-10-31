@@ -147,7 +147,8 @@ public sealed class FolioService : IFolioService
                 if (item is null)
                 {
                     return Fail<FolioResponseDto>("Folio item was not found.", "FOLIO_ITEM_NOT_FOUND", 404);
-                }  if (item.Status != FolioItemStatus.Posted) return Fail<FolioResponseDto>("Folio item is already voided or reversed.", "FOLIO_ITEM_ALREADY_VOIDED", 409);
+                }
+                if (item.Status != FolioItemStatus.Posted) return Fail<FolioResponseDto>("Folio item is already voided or reversed.", "FOLIO_ITEM_ALREADY_VOIDED", 409);
                 if (string.IsNullOrWhiteSpace(request.Reason))
                 {
                     return Fail<FolioResponseDto>("A reason is required.", "REASON_REQUIRED", 422);
@@ -193,7 +194,8 @@ public sealed class FolioService : IFolioService
         ChangeStatusAsync(actor, folioId, FolioStatus.Closed, request.Reason, request.ExpectedRowVersion, "Folio.Closed", ct);
 
  
-    public async Task<ResponseStatus<FolioItemPageDto>> GetItemsAsync(User actor, int folioId, FolioItemPageRequest request, CancellationToken ct = default)
+    public async Task<ResponseStatus<FolioItemPageDto>> 
+        GetItemsAsync(User actor, int folioId, FolioItemPageRequest request, CancellationToken ct = default)
     {
         var folio = await _repository.GetByIdAsync(folioId, false, ct);
         if (folio is null) return Fail<FolioItemPageDto>("Folio was not found.", "FOLIO_NOT_FOUND", 404);
@@ -203,7 +205,8 @@ public sealed class FolioService : IFolioService
         return Ok(new FolioItemPageDto { Items = items.Select(Map).ToList(), PageNumber = request.PageNumber, PageSize = request.PageSize, TotalCount = total });
     }
 
-    public async Task<ResponseStatus<FolioSummaryDto>> GetSummaryAsync(User actor, int folioId, CancellationToken ct = default)
+    public async Task<ResponseStatus<FolioSummaryDto>> 
+        GetSummaryAsync(User actor, int folioId, CancellationToken ct = default)
     {
         var folio = await _repository.GetByIdAsync(folioId, false, ct);
         if (folio is null) return Fail<FolioSummaryDto>("Folio was not found.", "FOLIO_NOT_FOUND", 404);
@@ -334,7 +337,51 @@ public sealed class FolioService : IFolioService
         }
     }
 
-    private static FolioResponseDto Map(Folio x) => new() { Id = x.id, ReservationId = x.ReservationId, Status = x.Status, Currency = x.Currency, Total = x.Total, Balance = x.Balance, CreditBalance = x.CreditBalance, CreatedAt = x.CreatedAt, UpdatedAt = x.UpdatedAt, RowVersion = Convert.ToBase64String(x.RowVersion ?? Array.Empty<byte>()), Items = x.Items.Select(Map).ToList(), Payments = x.Payments.Select(p => new PaymentResponseDto { Id = p.Id, Amount = p.Amount, Method = p.Method, Status = p.Status, ExternalId = p.ExternalId, PaidAt = p.PaidAt, Refunds = p.Refunds.Select(r => new RefundResponseDto { Id = r.id, PaymentId = r.PaymentId, Amount = r.Amount, Status = r.Status, Reason = r.Reason, ExternalId = r.ExternalId }).ToList() }).ToList(), Refunds = x.Payments.SelectMany(p => p.Refunds.Select(r => new RefundResponseDto { Id = r.id, PaymentId = r.PaymentId, Amount = r.Amount, Status = r.Status, Reason = r.Reason, ExternalId = r.ExternalId })).ToList() };
+    private static FolioResponseDto Map(Folio x) 
+        => 
+        new()
+        {
+            Id = x.id,
+            ReservationId = x.ReservationId, 
+            Status = x.Status, 
+            Currency = x.Currency,
+            Total = x.Total,
+            Balance = x.Balance,
+            CreditBalance = x.CreditBalance,
+            CreatedAt = x.CreatedAt, 
+            UpdatedAt = x.UpdatedAt,
+            RowVersion = Convert.ToBase64String(x.RowVersion ?? Array.Empty<byte>()),
+            Items = x.Items.Select(Map).ToList(),
+            Payments = x.Payments.Select(p => new PaymentResponseDto
+            {
+                Id = p.Id, 
+                Amount = p.Amount,
+                Method = p.Method,
+                Status = p.Status,
+                ExternalId = p.ExternalId,
+                PaidAt = p.PaidAt,
+                Refunds = p.Refunds.Select(r => new RefundResponseDto 
+                { Id = r.id,
+                    PaymentId = r.PaymentId,
+                    Amount = r.Amount, 
+                    Status = r.Status,
+                    Reason = r.Reason, 
+                    ExternalId = r.ExternalId 
+                })
+                .ToList() }).
+            ToList(),
+            Refunds = x.Payments.SelectMany(p => p.Refunds.Select(r =>
+            new RefundResponseDto 
+            { 
+                Id = r.id,
+                PaymentId = r.PaymentId,
+                Amount = r.Amount, 
+                Status = r.Status,
+                Reason = r.Reason, 
+                ExternalId = r.ExternalId 
+            }))
+            .ToList()
+        };
     private static FolioItemResponseDto
         Map(FolioItem x) => 
         new()

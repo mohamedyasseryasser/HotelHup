@@ -13,10 +13,12 @@ public sealed class ReservationService : IReservationService
 {
    
      private readonly IUserRepository user;
+    private readonly IGuestRepository guestRepository;
     private readonly IReservationRepository _repository;
-    public ReservationService(IUserRepository user, IReservationRepository repository)
+    public ReservationService(IUserRepository user,IReservationRepository repository)
     {
          this.user = user;
+        this.guestRepository = guestRepository;
         _repository = repository;              
     }
 
@@ -84,13 +86,11 @@ public sealed class ReservationService : IReservationService
         , CancellationToken ct = default)
     {
         var propertyId = request.PropertyId ?? actor.PropertyId;
-        
+ 
         if (actor.PropertyId!=null && !HasScope(actor,propertyId.Value))
         {
             return Fail<PagedReservationResponse>("A valid property scope is required.", "PROPERTY_SCOPE_REQUIRED", 403);
-
         }
-    
         var (items, total) = await _repository.SearchAsync(propertyId, request, ct);
         return Ok(new PagedReservationResponse 
         {

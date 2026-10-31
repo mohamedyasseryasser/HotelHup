@@ -25,7 +25,12 @@ namespace HotelHup.INFRASTRUCTURE.repos
         {
             return _context.Guests.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct);
         }
-
+        public async Task<Guest?> getbyphone(string phone,CancellationToken ct=default)
+        {
+            var normalizephone = Normalize(phone);
+            return await  _context.Guests.AsNoTracking().Where(x=>x.Phone!=null)
+                .FirstOrDefaultAsync(x=>x.Phone.ToLower()==normalizephone, ct);
+        }
         public Task<Guest?> GetTrackedByIdAsync(int id, int propertyid,CancellationToken ct = default)
         {
             return _context.Guests.SingleOrDefaultAsync(x => x.Id == id &&x.propertyid == propertyid, ct);
