@@ -220,7 +220,8 @@ public sealed class ReservationRepository : IReservationRepository
         SearchAsync(int? propertyId, ReservationSearchRequest request, CancellationToken ct = default)
     {
         var query = _context.Reservations.AsNoTracking();
-        if (propertyId.HasValue) { query.Where(x => x.PropertyId == propertyId); }
+        if (propertyId.HasValue) {query= query.Where(x => x.PropertyId == propertyId.Value); 
+        }
         if (request.Status.HasValue) query = query.Where(x => x.Status == request.Status.Value);
         if (request.From.HasValue) query = query.Where(x => x.CheckOutDate > request.From.Value.Date);
         if (request.To.HasValue) query = query.Where(x => x.CheckInDate < request.To.Value.Date.AddDays(1));

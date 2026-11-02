@@ -36,7 +36,19 @@ namespace HotelHup.INFRASTRUCTURE.repos
         public Task<RatePlanVersion?> GetVersionAsync(int ratePlanId, int versionNumber, CancellationToken ct = default) =>
             _context.RatePlansversions.AsNoTracking().SingleOrDefaultAsync(
                 x => x.RatePlanId == ratePlanId && x.VersionNumber == versionNumber, ct);
-
+        public async Task<RatePlan?> GetRatePlanAsync(
+       int propertyId,
+       int roomTypeId,
+       int ratePlanId,
+       DateTime stayDate,
+       CancellationToken ct = default)
+        {
+            var query = _context.RatePlans.AsNoTracking().Include(x => x.Versions)
+                .Where(x => x.PropertyId == propertyId && x.RoomTypeId == roomTypeId && x.IsActive &&
+                            x.ValidFrom.Date <= stayDate.Date && (x.ValidTo == null || x.ValidTo.Value.Date > stayDate.Date));
+            query = query.Where(x => x.Id == ratePlanId);
+            return await query.OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
+        }
         public Task<RatePlanVersion?> GetLatestVersionAsync(int ratePlanId, CancellationToken ct = default) =>
             _context.RatePlansversions.AsNoTracking().Where(x => x.RatePlanId == ratePlanId)
                 .OrderByDescending(x => x.VersionNumber).FirstOrDefaultAsync(ct);

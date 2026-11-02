@@ -37,7 +37,7 @@ namespace HotelHup.CORE.Entities
         public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 
         // Navigation Properties
-
+        
         [ForeignKey(nameof(PropertyId))]
         public Property Property { get; set; } = null!;
 

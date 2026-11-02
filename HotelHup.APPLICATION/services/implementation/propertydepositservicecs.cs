@@ -707,84 +707,7 @@ namespace HotelHup.APPLICATION.services.implementation
                 .ToList();
         }
 
-        private static DepositPolicyVersion
-            NewDepositVersion(DepositPolicy policy, CreateDepositPolicyRequest r, int version, DateTimeOffset now) => new()
-            {
-                Deposit = policy,
-                Version = version,
-                Name = Clean(r.Name),
-                Type = r.Type,
-                Amount = r.Amount,
-                Percentage = r.Percentage,
-                ValidFrom = r.ValidFrom.ToUniversalTime(),
-                ValidTo = r.ValidTo?.ToUniversalTime(),
-                IsActive = true,
-                CreatedAt = now,
-                CreatedBy = null
-            };
-        private async Task<ResponseStatus<TaxResponse>>
-            SetTax(
-               User actor, int propertyId,
-                int taxId,
-                bool active,
-                CancellationToken ct)
-        {
-            var auth = await AuthorizeAsync(actor.Id, propertyId, ct);
-
-            if (!auth.Success)
-            {
-                return Fail<TaxResponse>(auth);
-            }
-
-            var tax =
-                await PropertyTaxRepo.GetTrackedTaxAsync(
-                    propertyId,
-                    taxId,
-                    ct);
-
-            if (tax is null)
-            {
-                return Fail<TaxResponse>(
-                    "Tax not found.",
-                    404);
-            }
-
-            tax.IsActive = active;
-            tax.UpdatedAt =
-                DateTimeOffset.UtcNow;
-
-            tax.UpdatedBy =
-                actor.Id;
-
-            await PropertyRepository.AddAuditLogAsync(
-                Audit(
-                    "Tax",
-                    active
-                        ? "Activate"
-                        : "Deactivate",
-                    taxId.ToString(),
-                    null,
-                    new
-                    {
-                        tax.IsActive
-                    },
-                    null,
-                    propertyId),
-                ct);
-            try
-            {
-                await PropertyRepository.SaveChangesAsync(ct);
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                return Fail<TaxResponse>(
-                    "concurrency conflict.",
-                    409);
-            }
-
-            return Ok(ToResponse(tax));
-        }
-
+        
         private async Task<
        ResponseStatus<DepositPolicyResponse>>
        SetDeposit(
@@ -851,16 +774,16 @@ namespace HotelHup.APPLICATION.services.implementation
                     400);
             }
 
-            var oldSnapshot = new
-            {
-                policy.Id,
-                policy.PropertyId,
-                policy.IsActive,
-                policy.CurrentVersion,
-                Version = policy.Versions
-                    .OrderByDescending(x => x.Version)
-                    .FirstOrDefault()
-            };
+            var previousVersion =
+     policy.Versions
+         .OrderByDescending(x => x.Version)
+         .FirstOrDefault();
+
+            var oldValues =
+                BuildPolicyAuditObject(
+                    policy,
+                    previousVersion);
+
 
             policy.IsActive = active;
 
@@ -880,14 +803,10 @@ namespace HotelHup.APPLICATION.services.implementation
             policy.UpdatedBy =
                 actor.Id;
 
-            var newSnapshot = new
-            {
-                policy.Id,
-                policy.PropertyId,
-                policy.IsActive,
-                policy.CurrentVersion,
-                Version = currentVersion
-            };
+            var newValues =
+      BuildPolicyAuditObject(
+          policy,
+          currentVersion);
 
             try
             {
@@ -899,8 +818,8 @@ namespace HotelHup.APPLICATION.services.implementation
                             ? "Activate"
                             : "Deactivate",
                         policyId.ToString(),
-                        oldSnapshot,
-                        newSnapshot,
+                         oldValues,
+                        newValues,
                         reason.Trim(),
                         propertyId,
                         actor.Id),
@@ -1126,12 +1045,7 @@ namespace HotelHup.APPLICATION.services.implementation
                 statusCode: 200);
         }
 
-        private static ResponseStatus<T> Created<T>(T value)
-        {
-            return new ResponseStatus<T>(
-                value,
-                statusCode: 201);
-        }
+       
 
         private static ResponseStatus<T> Fail<T>(
             string message,
@@ -1153,9 +1067,7 @@ namespace HotelHup.APPLICATION.services.implementation
         {
             return new DepositPolicyVersion
             {
-                /*
-                 * هذا الربط مطلوب لـ EF أثناء الحفظ.
-                 */
+                
                 Deposit =
                     policy,
 
@@ -1200,12 +1112,7 @@ namespace HotelHup.APPLICATION.services.implementation
                 statusCode: response.StatusCode);
         }
 
-        private static string R(byte[] bytes)
-        {
-            return Convert.ToBase64String(
-                bytes ?? Array.Empty<byte>());
-        }
-
+        
 
         private static TaxResponse ToResponse(
    Tax tax)
@@ -1235,6 +1142,41 @@ namespace HotelHup.APPLICATION.services.implementation
             };
         }
 
+        private static DepositPolicyVersionAuditDto?
+    BuildVersionAuditObject(
+        DepositPolicyVersion? version)
+        {
+            if (version is null)
+                return null;
+
+            return new DepositPolicyVersionAuditDto
+            {
+                Id = version.Id,
+                DepositId = version.DepositId,
+                Version = version.Version,
+                Name = version.Name,
+                Type = version.Type,
+                Amount = version.Amount,
+                Percentage = version.Percentage,
+                ValidFrom = version.ValidFrom,
+                ValidTo = version.ValidTo,
+                IsActive = version.IsActive
+            };
+        }
+        private static DepositPolicyAuditDto
+    BuildPolicyAuditObject(
+        DepositPolicy policy,
+        DepositPolicyVersion? version)
+        {
+            return new DepositPolicyAuditDto
+            {
+                Id = policy.Id,
+                PropertyId = policy.PropertyId,
+                IsActive = policy.IsActive,
+                CurrentVersion = policy.CurrentVersion,
+                Version = BuildVersionAuditObject(version)
+            };
+        }
 
         private static DepositPolicyResponse
          ToResponse(DepositPolicy policy)
@@ -1250,6 +1192,9 @@ namespace HotelHup.APPLICATION.services.implementation
                 Name =
             policy.Name,
 
+                RowVersion =policy.RowVersion is not null
+                    ? Convert.ToBase64String(policy.RowVersion)
+                    : string.Empty,
                 Type =
             policy.Type,
 

@@ -11,6 +11,12 @@ namespace HotelHup.APPLICATION.interfacesrepo
 {
     public interface IRatePlanRepository
     {
+        Task<RatePlan?> GetRatePlanAsync(
+       int propertyId,
+       int roomTypeId,
+       int ratePlanId,
+       DateTime stayDate,
+       CancellationToken ct = default);
         Task<List<RatePlan>> GetAllAsync(int propertyid,CancellationToken ct = default);
         Task<RatePlan?> GetByIdAsync(int id, bool tracking, CancellationToken ct = default);
         Task<List<RatePlanVersion>> GetVersionsAsync(int ratePlanId, CancellationToken ct = default);

@@ -13,13 +13,11 @@ public sealed class ReservationService : IReservationService
 {
    
      private readonly IUserRepository user;
-    private readonly IGuestRepository guestRepository;
-    private readonly IReservationRepository _repository;
+     private readonly IReservationRepository _repository;
     public ReservationService(IUserRepository user,IReservationRepository repository)
     {
          this.user = user;
-        this.guestRepository = guestRepository;
-        _repository = repository;              
+         _repository = repository;              
     }
 
     public async Task<ResponseStatus<IReadOnlyList<AvailabilityItemResponse>>> 
@@ -2362,7 +2360,8 @@ public sealed class ReservationService : IReservationService
                         checkIn.Date,
                         TimeSpan.Zero),
                     ct: ct);
-            if (cancellationVersion is null || cancellationVersion.CancellationPolicy is null)
+            if (cancellationVersion is null || cancellationVersion.CancellationPolicy is null ||
+                cancellationVersion.CancellationPolicy.Status == PolicyStatus.Inactive )
             {
                 return;
             }
@@ -2419,7 +2418,7 @@ public sealed class ReservationService : IReservationService
                         checkIn.Date,
                         TimeSpan.Zero),
                     ct: ct);
-            if (depositVersion is null || depositVersion.Deposit is null)
+            if (depositVersion is null || depositVersion.Deposit is null ||depositVersion.Deposit.IsActive==false)
             {
                 return;
             }
