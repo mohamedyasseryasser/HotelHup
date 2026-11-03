@@ -63,7 +63,7 @@ public sealed class ReservationService : IReservationService
         var nights = (request.CheckOutDate.Date - request.CheckInDate.Date).Days;
         var result = rooms.Select(room =>
         {
-            var rate = room.PricePerNight > 0 ? room.PricePerNight : room.RoomType?.BasePrice ?? 0m;
+            var rate =  room.PricePerNight > 0 ? room.PricePerNight : room.RoomType?.BasePrice ?? 0m;
             return new AvailabilityItemResponse
             { 
                 RoomId = room.Id, 
@@ -184,7 +184,7 @@ public sealed class ReservationService : IReservationService
                 422);
         }
         var now = DateTimeOffset.UtcNow;
-        var taxes = await _repository.GetActiveTaxesAsync(request.PropertyId, now, ct);
+        var taxes = await _repository.GetActiveTaxesAsync(request.PropertyId, request.CheckInDate.Date, ct);
         var reservation = new Reservation
         {
             PropertyId = request.PropertyId,
@@ -284,6 +284,19 @@ public sealed class ReservationService : IReservationService
                 "DEPOSIT_POLICY_NOT_FOUND", 
                 422);
         }
+        var refundabilityError =
+    ValidateRefundabilityCompatibility(
+        reservation.ReservationRooms,
+        reservation.CancellationPolicySnapshot);
+
+        if (refundabilityError is not null)
+        {
+            return Fail<ReservationResponse>(
+                refundabilityError,
+                "RATE_PLAN_POLICY_MISMATCH",
+                422);
+        }
+
         AddHistory(reservation, null, ReservationStatus.Pending, "Reservation created", actor.Id, now);
         var folio = new Folio
         {
@@ -454,6 +467,18 @@ public sealed class ReservationService : IReservationService
                     return Fail<ReservationResponse>("No valid rate plan exists.", "RATE_PLAN_NOT_FOUND", 422);
                 }
                 newLines.Add(line);
+            }
+            var refundabilityError =
+    ValidateRefundabilityCompatibility(
+        newLines,
+        reservation.CancellationPolicySnapshot);
+
+            if (refundabilityError is not null)
+            {
+                return Fail<ReservationResponse>(
+                    refundabilityError,
+                    "RATE_PLAN_POLICY_MISMATCH",
+                    422);
             }
             foreach (var old in reservation.ReservationRooms.Where(x => x.IsCurrent)) 
             {
@@ -669,6 +694,31 @@ public sealed class ReservationService : IReservationService
             {
                 return Fail<ReservationActionResponse>("No valid rate plan exists.", "RATE_PLAN_NOT_FOUND", 422);
             }
+            var cancellationSnapshot =
+    reservation.CancellationPolicySnapshot;
+
+            if (cancellationSnapshot is null)
+            {
+                return Fail<ReservationActionResponse>(
+                    "Cancellation policy snapshot was not found.",
+                    "CANCELLATION_POLICY_SNAPSHOT_NOT_FOUND",
+                    422);
+            }
+
+            var ratePlanAllowsRefund =
+                version.IsRefundable;
+
+            var cancellationAllowsRefund =
+                !cancellationSnapshot.IsNonRefundable;
+
+            if (ratePlanAllowsRefund != cancellationAllowsRefund)
+            {
+                return Fail<ReservationActionResponse>(
+                    "The selected rate plan is not compatible with the reservation cancellation policy.",
+                    "RATE_PLAN_POLICY_MISMATCH",
+                    422);
+            }
+
             var nights = (reservation.CheckOutDate.Date - reservation.CheckInDate.Date).Days;
             var rate = version.Price > 0 ? version.Price : room.PricePerNight;
             var amount = Money(rate * nights);
@@ -1795,7 +1845,7 @@ public sealed class ReservationService : IReservationService
                 var snapshot = reservation.CancellationPolicySnapshot;
                 var hoursUntilCheckIn = (reservation.CheckInDate.Date - localNow.DateTime).TotalHours;
                 var withinFreeWindow = hoursUntilCheckIn >= snapshot.FreeCancellationHours;
-                cancellationFee = snapshot.IsNonRefundable || !withinFreeWindow
+                cancellationFee =  !withinFreeWindow
                     ? Money(reservation.TotalAmount * snapshot.CancellationFeePercentage / 100m + snapshot.FixedCancellationFee)
                     : 0m;
                 cancellationFee = Math.Min(cancellationFee, reservation.TotalAmount);
@@ -1832,7 +1882,11 @@ public sealed class ReservationService : IReservationService
                     "NO_SHOW_CUTOFF_NOT_REACHED",
                     403);
             }
-            noShowCharge = reservation.ReservationRooms.Where(x => x.IsCurrent).Select(x => x.NightlyRate).FirstOrDefault();
+            noShowCharge = reservation.ReservationRooms
+                .Where(x => x.IsCurrent)
+                .OrderByDescending(x => x.NightlyRate)
+                .Select(x => x.NightlyRate)
+                .FirstOrDefault();
             if (noShowCharge > 0m && reservation.Folio is not null)
             {
                 reservation.Folio.Items.Add(new FolioItem { Type = FolioItemType.Adjustment,
@@ -1844,7 +1898,7 @@ public sealed class ReservationService : IReservationService
                     CreatedBy = actor.Id
                 });
                 reservation.Folio.Total += noShowCharge;
-             }
+            }
             if (reservation.Folio is not null) ReconcileFolio(reservation.Folio);
 
         }
@@ -2464,6 +2518,52 @@ public sealed class ReservationService : IReservationService
         }
     }
 
+    private static string?
+     ValidateRefundabilityCompatibility(
+         IEnumerable<ReservationRoom> roomLines,
+         ReservationCancellationPolicySnapshot?
+             cancellationPolicy)
+    {
+        if (cancellationPolicy is null)
+        {
+            return "Cancellation policy snapshot is required.";
+        }
+
+        var policyAllowsRefund =
+            !cancellationPolicy.IsNonRefundable;
+
+        foreach (
+            var roomLine in roomLines
+                .Where(x => x.IsCurrent || x.Id == 0))
+        {
+            var ratePlanSnapshot =
+                roomLine.RatePlanSnapshot;
+
+            if (ratePlanSnapshot is null)
+            {
+                return
+                    $"Rate Plan snapshot is required for room " +
+                    $"{roomLine.RoomId}.";
+            }
+
+            if (
+                ratePlanSnapshot.IsRefundable !=
+                policyAllowsRefund)
+            {
+                return
+                    $"Rate Plan for room {roomLine.RoomId} is " +
+                    $"{(
+                        ratePlanSnapshot.IsRefundable
+                            ? "refundable"
+                            : "non-refundable"
+                    )}, " +
+                    "but the selected Cancellation Policy has " +
+                    "the opposite refundability rule.";
+            }
+        }
+
+        return null;
+    }
 
     private static void
         AddHistory(Reservation reservation,
@@ -2681,6 +2781,7 @@ public sealed class ReservationService : IReservationService
         folio.Balance = Math.Max(0m, difference);
         folio.CreditBalance = Math.Max(0m, -difference);
     }
+
     private static ReservationSummaryResponse
         MapSummary(Reservation x) => 
         new()

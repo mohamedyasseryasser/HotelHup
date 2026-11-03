@@ -12,8 +12,8 @@ namespace HotelHup.APPLICATION.services.interfaces
 {
     public interface IPropertyTax
     {
-        Task<ResponseStatus<IReadOnlyList<TaxResponse>>> GetTaxesAsync(User actor, int propertyId, CancellationToken ct = default);
-        Task<ResponseStatus<TaxResponse>> GetTaxAsync(User actor, int propertyId, int taxId, CancellationToken ct = default);
+        Task<ResponseStatus<IReadOnlyList<TaxResponse>>> GetTaxesAsync(User actor, int propertyId,bool current  , CancellationToken ct = default);
+        Task<ResponseStatus<TaxResponse>> GetTaxAsync(User actor, int propertyId, int taxId, bool current ,CancellationToken ct = default);
         Task<ResponseStatus<TaxResponse>> CreateTaxAsync(User actor, int propertyId, CreateTaxRequest request, CancellationToken ct = default);
         Task<ResponseStatus<TaxResponse>>
               UpdateTaxAsync(

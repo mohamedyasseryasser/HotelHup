@@ -72,7 +72,7 @@ namespace HotelHup.API.Controllers
         [HttpGet("{propertyId:int}/taxes")]
         [Authorize(Policy = Permissions.Properties.Read)]
         public async Task<IActionResult> Taxes(
-                  int propertyId,
+                  int propertyId,bool includeall,
                   CancellationToken ct)
         {
             //authentaction check
@@ -81,7 +81,7 @@ namespace HotelHup.API.Controllers
             {
                 return Result(CurrentUserLogin);
             }
-            var result = await _service.GetTaxesAsync(CurrentUserLogin.Data, propertyId, ct);
+            var result = await _service.GetTaxesAsync(CurrentUserLogin.Data, propertyId, includeall,ct);
             return Result(result);
         }
 
@@ -89,7 +89,7 @@ namespace HotelHup.API.Controllers
         [Authorize(Policy = Permissions.Properties.Read)]
         public async Task<IActionResult> Tax(
             int propertyId,
-            int taxId,
+            int taxId,bool includeall,
             CancellationToken ct)
         {  //authentaction check
             var CurrentUserLogin = await GetCurrentuserLogeined();
@@ -99,7 +99,7 @@ namespace HotelHup.API.Controllers
             }
             var result = await _service.GetTaxAsync(
                 CurrentUserLogin.Data, propertyId,
-                taxId,
+                taxId,includeall,
                 ct);
 
             return Result(result);

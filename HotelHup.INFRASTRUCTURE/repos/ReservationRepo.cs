@@ -62,7 +62,10 @@ public sealed class ReservationRepository : IReservationRepository
         return query.OrderByDescending(x => x.Version).FirstOrDefaultAsync(ct);
     }
 
-    public Task<DepositPolicyVersion?> GetDepositPolicyVersionAsync(int propertyId, int policyId, int? versionId, DateTimeOffset stayDate, CancellationToken ct = default)
+    public Task<DepositPolicyVersion?> 
+        GetDepositPolicyVersionAsync(
+        int propertyId, 
+        int policyId, int? versionId, DateTimeOffset stayDate, CancellationToken ct = default)
     {
         var query = _context.depositPolicyVersions.AsNoTracking().Include(x => x.Deposit)
             .Where(x => x.Deposit != null && x.Deposit.PropertyId == propertyId && x.DepositId == policyId && x.IsActive &&
@@ -71,8 +74,10 @@ public sealed class ReservationRepository : IReservationRepository
         return query.OrderByDescending(x => x.Version).FirstOrDefaultAsync(ct);
     }
 
+   //10-------------12-----13-------15---------16-----------17
     public async Task<IReadOnlyList<Tax>>
-        GetActiveTaxesAsync(int propertyId,
+        GetActiveTaxesAsync(
+        int propertyId,
         DateTimeOffset stayDate,
         CancellationToken ct = default) =>
         await _context.Taxes.AsNoTracking().Where(

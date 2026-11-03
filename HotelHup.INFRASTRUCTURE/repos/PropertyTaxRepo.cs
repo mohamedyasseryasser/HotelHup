@@ -22,26 +22,40 @@ namespace HotelHup.INFRASTRUCTURE.repos
             _context = context;
         }
  public async Task<IReadOnlyList<Tax>>
-    GetCurrentTaxesAsync(
+     GetCurrentTaxesAsync(
         int propertyId,
         DateTimeOffset now,
         CancellationToken ct = default)
         {
-            return await _context.Taxes
-                .AsNoTracking()
-                .Where(x =>
+            //10--------------12----------13------------15-------------------17
+            IQueryable<Tax> result = _context.Taxes.AsNoTracking().Where(x=>x.PropertyId==propertyId && x.IsActive) ;
+            
+                result = result.Where(x =>
                     x.PropertyId == propertyId &&
-                    x.IsActive &&
+                  
                     x.ValidFrom <= now &&
                     (
                         x.ValidTo == null ||
                         now < x.ValidTo
-                    ))
+                    ));
+          
+        result =  result.OrderBy(x=>x.Code).ThenBy(x=>x.Name);
+            return await result.ToListAsync();
+           
+        }
+
+        public async Task<IReadOnlyList<Tax>>
+         GetAllTaxesAsync(
+        int propertyId,
+        CancellationToken ct = default)
+        {
+            var query = _context.Taxes.AsNoTracking().Where(x => x.PropertyId == propertyId);
+           
+            return await query
                 .OrderBy(x => x.Code)
                 .ThenBy(x => x.Name)
                 .ToListAsync(ct);
         }
-
 
         public async Task<Tax?>
         GetTaxAsync(
@@ -110,7 +124,7 @@ namespace HotelHup.INFRASTRUCTURE.repos
 
             var requestedTo =
                 validTo ?? DateTimeOffset.MaxValue;
-
+            //10---------------12-------13--------15-----------------17
             return await _context.Taxes
                 .AsNoTracking()
                 .AnyAsync(

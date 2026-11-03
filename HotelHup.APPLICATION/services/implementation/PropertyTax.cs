@@ -38,7 +38,7 @@ namespace HotelHup.APPLICATION.services.implementation
             ResponseStatus<IReadOnlyList<TaxResponse>>>
             GetTaxesAsync(
                 User actor,
-                int propertyId,
+                int propertyId,bool inclideall , 
                 CancellationToken ct = default)
         {
             var authorization =
@@ -54,11 +54,13 @@ namespace HotelHup.APPLICATION.services.implementation
                     authorization.StatusCode);
             }
 
-            var taxes =
-                await _repo.GetCurrentTaxesAsync(
-                    propertyId,
-                    DateTimeOffset.UtcNow,
-                    ct);
+            var taxes = inclideall
+        ? await _repo.GetAllTaxesAsync(propertyId,ct)
+        : await _repo.GetCurrentTaxesAsync(
+            propertyId,
+            DateTimeOffset.UtcNow,
+            ct);
+
 
             return Ok<IReadOnlyList<TaxResponse>>(
                 taxes
@@ -68,11 +70,12 @@ namespace HotelHup.APPLICATION.services.implementation
 
 
         public async Task<ResponseStatus<TaxResponse>>
-            GetTaxAsync(
-                User actor,
-                int propertyId,
-                int taxId,
-                CancellationToken ct = default)
+       GetTaxAsync(
+           User actor,
+           int propertyId,   
+           int taxId, bool includeAll,
+           CancellationToken ct = default
+          )
         {
             var authorization =
                 await AuthorizeActivePropertyAsync(
@@ -89,8 +92,8 @@ namespace HotelHup.APPLICATION.services.implementation
 
             var tax =
                 await _repo.GetTaxAsync(
-                    propertyId,
-                    taxId,
+                  propertyId,
+                 taxId,
                     ct);
 
             if (tax is null)
@@ -100,27 +103,26 @@ namespace HotelHup.APPLICATION.services.implementation
                     404);
             }
 
-            var now =
-                DateTimeOffset.UtcNow;
-
-            var isCurrent =
-                tax.IsActive &&
-                tax.ValidFrom <= now &&
-                (
-                    tax.ValidTo == null ||
-                    now < tax.ValidTo
-                );
-
-            if (!isCurrent)
+            if (!includeAll)
             {
-                return Fail<TaxResponse>(
-                    "Tax is not active or not effective currently.",
-                    409);
+                var now = DateTimeOffset.UtcNow;
+
+                var isCurrent =
+                    tax.IsActive &&
+                    tax.ValidFrom <= now &&
+                    (tax.ValidTo == null || now < tax.ValidTo);
+
+                if (!isCurrent)
+                {
+                    return Fail<TaxResponse>(
+                        "Tax is not active or not effective currently.",
+                        409);
+                }
             }
 
-            return Ok(
-                ToResponse(tax));
+            return Ok(ToResponse(tax));
         }
+
 
 
         public async Task<ResponseStatus<TaxResponse>>
@@ -1105,55 +1107,9 @@ namespace HotelHup.APPLICATION.services.implementation
             };
         }
 
-        private static string Clean(
-            string value)
-        {
-            return value.Trim();
-        }
-
-        private static string? CleanOptional(
-            string? value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return null;
-            }
-
-            return value.Trim();
-        }
-
-        private static string Normalize(
-            string value)
-        {
-            return value
-                .Trim()
-                .ToUpperInvariant();
-        }
-
-        private static string NormalizeCurrency(
-            string value)
-        {
-            return value
-                .Trim()
-                .ToUpperInvariant();
-        }
-
-        private static bool ValidZone(
-            string zone)
-        {
-            try
-            {
-                TimeZoneInfo.FindSystemTimeZoneById(
-                    zone.Trim());
-
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
+      
+ 
+        
 
         private static List<string>
       ValidateTaxDates(
@@ -1212,69 +1168,7 @@ namespace HotelHup.APPLICATION.services.implementation
         }
 
 
-        private async Task<ResponseStatus<TaxResponse>>
-    SetTax(
-       User actor, int propertyId,
-        int taxId,
-        bool active,
-        CancellationToken ct)
-        {
-            var auth = await AuthorizeAsync(actor.Id, propertyId, ct);
-
-            if (!auth.Success)
-            {
-                return Fail<TaxResponse>(auth);
-            }
-
-            var tax =
-                await _repo.GetTrackedTaxAsync(
-                    propertyId,
-                    taxId,
-                    ct);
-
-            if (tax is null)
-            {
-                return Fail<TaxResponse>(
-                    "Tax not found.",
-                    404);
-            }
-
-            tax.IsActive = active;
-            tax.UpdatedAt =
-                DateTimeOffset.UtcNow;
-
-            tax.UpdatedBy =
-                actor.Id;
-
-            await PropertyRepository.AddAuditLogAsync(
-                Audit(
-                    "Tax",
-                    active
-                        ? "Activate"
-                        : "Deactivate",
-                    taxId.ToString(),
-                    null,
-                    new
-                    {
-                        tax.IsActive
-                    },
-                    null,
-                    propertyId),
-                ct);
-            try
-            {
-                await PropertyRepository.SaveChangesAsync(ct);
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                return Fail<TaxResponse>(
-                    "concurrency conflict.",
-                    409);
-            }
-
-            return Ok(ToResponse(tax));
-        }
-
+    
         private string GetCorrelationId()
         {
             var httpContext =  HttpContextAccessor.HttpContext;

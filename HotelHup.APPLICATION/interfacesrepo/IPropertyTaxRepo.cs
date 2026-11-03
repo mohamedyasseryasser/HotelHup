@@ -11,16 +11,21 @@ namespace HotelHup.APPLICATION.interfacesrepo
     public interface IPropertyTaxRepo
     {
         Task<IReadOnlyList<Tax>>
-     GetCurrentTaxesAsync(
-         int propertyId,
-         DateTimeOffset now,
-         CancellationToken ct = default);
+        GetCurrentTaxesAsync(
+            int propertyId,
+            DateTimeOffset now,
+            CancellationToken ct = default);
+
+        Task<IReadOnlyList<Tax>>
+            GetAllTaxesAsync(
+                int propertyId  ,
+                CancellationToken ct = default);
 
         Task<Tax?>
-            GetTaxAsync(
-                int propertyId,
-                int taxId,
-                CancellationToken ct = default);
+        GetTaxAsync(
+            int propertyId,
+            int taxId,
+            CancellationToken ct = default);
 
         Task<Tax?>
             GetTrackedTaxAsync(
