@@ -104,7 +104,8 @@ public sealed class ReservationRepository : IReservationRepository
         //check double reservation
         //---------------0--------------------0---------------
          // 10-----------12-----14------------15------------16--------17-------18
-         
+         // 1,2 
+         // 1,2
 
         var blockingStatuses = new[] { ReservationStatus.Pending, ReservationStatus.Confirmed, ReservationStatus.CheckedIn };
         var occupiedRoomIds = _context.ReservationRooms.Where(x => x.IsCurrent && x.Reservation != null &&
@@ -114,7 +115,7 @@ public sealed class ReservationRepository : IReservationRepository
 
         return await _context.Rooms.AsNoTracking().Include(x => x.RoomType)
             .Where(x => x.property_id == propertyId && x.IsActive &&
-                        (x.Status == RoomStatus.Available || x.Status == RoomStatus.Inspected) &&
+                        (x.Status != RoomStatus.OutOfService && x.Status != RoomStatus.OutOfOrder) &&
                         (!roomTypeId.HasValue || x.RoomTypeId == roomTypeId.Value) && x.RoomType != null &&
                         x.RoomType.IsActive && x.RoomType.MaxAdults >= adults && x.RoomType.MaxChildren >= children &&
                         !occupiedRoomIds.Contains(x.Id)).OrderBy(x => x.RoomNumber).ToListAsync(ct);

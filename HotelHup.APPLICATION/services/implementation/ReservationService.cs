@@ -446,10 +446,33 @@ public sealed class ReservationService : IReservationService
                 {
                     return Fail<ReservationResponse>("Room type does not match.", "ROOM_TYPE_MISMATCH", 422);
                 }
-                if (!available.Any(x => x.Id == room.Id) || !selected.Add(room.Id))
+                var isAvailable =
+      available.Any(x => x.Id == room.Id);
+
+                var wasAlreadySelected =
+                    selected.Contains(room.Id);
+
+                if (!isAvailable || wasAlreadySelected)
                 {
-                    return Fail<ReservationResponse>("One or more rooms are unavailable.", "ROOM_NO_LONGER_AVAILABLE", 409);
+                    var reason =
+                        !isAvailable && wasAlreadySelected
+                            ? "Room is unavailable and duplicated."
+                            : !isAvailable
+                                ? "Room is not in available result."
+                                : "Room was sent more than once.";
+
+                    return Fail<ReservationResponse>(
+                        $"{reason} RoomId={room.Id}, " +
+                        $"ReservationId={id}, " +
+                        $"RoomTypeId={requestedTypeId}, " +
+                        $"CheckIn={checkIn:yyyy-MM-dd}, " +
+                        $"CheckOut={checkOut:yyyy-MM-dd}.",
+                        "ROOM_NO_LONGER_AVAILABLE",
+                        409);
                 }
+
+                selected.Add(room.Id);
+
                 var line = await BuildRoomLineAsync(item.DiscountAmount,
                     item.FeeAmount, 
                     propertyId,
@@ -647,7 +670,6 @@ public sealed class ReservationService : IReservationService
         if (request.Rooms.Count<=0)
         {
             return Fail<ReservationActionResponse>("must be fount one room at least.", "must be fount one room at least", 409);
-
         }
         var items = request.Rooms;
  
@@ -672,7 +694,7 @@ public sealed class ReservationService : IReservationService
                 item.Adults ?? reservation.Adults,
                 item.Children ?? reservation.Children,
                 room.RoomTypeId,
-                id,
+                null,
                 ct);
             if (!available.Any(x => x.Id == room.Id))
             {
@@ -2840,7 +2862,8 @@ public sealed class ReservationService : IReservationService
                     DiscountAmount = r.DiscountAmount,
 
                     TaxAmount = r.RatePlanSnapshot?.TaxAmount ?? 0m,
-
+                    Adults= r.Adults,
+                    Children= r.Children,
                     FeeAmount = r.FeeAmount,
                     TotalAmount = r.TotalAmount,
                     IsCurrent = r.IsCurrent

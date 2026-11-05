@@ -178,6 +178,8 @@ public sealed class ReservationSearchRequest
 
 public sealed class ReservationRoomResponse
 {
+    public int Adults { get; set; }
+     public int Children { get; set; }
     public int Id { get; init; }
     public int RoomId { get; init; }
     public string RoomNumber { get; init; } = string.Empty;
