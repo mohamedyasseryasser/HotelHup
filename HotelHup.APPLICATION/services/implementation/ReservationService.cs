@@ -2808,6 +2808,7 @@ public sealed class ReservationService : IReservationService
         MapSummary(Reservation x) => 
         new()
         { 
+            folioid= x.Folio?.id??0,
             Id = x.Id,
             PropertyId = x.PropertyId,
             GuestId = x.GuestId,
@@ -2828,7 +2829,7 @@ public sealed class ReservationService : IReservationService
             Id = x.Id,
             PropertyId = x.PropertyId,
             GuestId = x.GuestId,
-
+            folioid= x.Folio?.id ?? 0,
             GuestName =
                 $"{x.Guest?.FirstName} {x.Guest?.LastName}".Trim(),
 

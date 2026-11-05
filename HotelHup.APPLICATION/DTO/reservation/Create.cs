@@ -202,7 +202,7 @@ public class ReservationSummaryResponse
     public int GuestId { get; init; }
     public string GuestName { get; init; } = string.Empty;
     public ReservationStatus Status { get; init; }
-
+    public int folioid {get; init; } 
     public string RowVersion { get; init; } = string.Empty;
 
     public DateTime CheckInDate { get; init; }
