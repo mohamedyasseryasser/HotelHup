@@ -257,26 +257,75 @@ public sealed class FolioService : IFolioService
         return Ok(true);
     }
 
-    private static void Recalculate(Folio folio)
+    private static void Recalculate(
+        Folio folio)
     {
-        var active = folio.Items.Where(x => x.Status == FolioItemStatus.Posted).ToList();
-        var charges = active.Where(x => x.Type is FolioItemType.RoomCharge 
-        or FolioItemType.Service
-        or FolioItemType.Tax
-        or FolioItemType.Fee
-        or FolioItemType.Adjustment).
-        Sum(x => x.Amount);
+        var active =
+            folio.Items
+                .Where(x =>
+                    x.Status == FolioItemStatus.Posted)
+                .ToList();
 
-        var taxes = active.Sum(x => x.Tax);
-        var discounts = active.Where(x => x.Type == FolioItemType.Discount).
-            Sum(x => x.Amount);
+        /*
+         * Amount قبل الضريبة.
+         *
+         * Tax ليس charge مستقلًا هنا.
+         */
+        var charges =
+            active
+                .Where(x =>
+                    x.Type is
+                        FolioItemType.RoomCharge
+                        or FolioItemType.Service
+                        or FolioItemType.Fee
+                        or FolioItemType.Adjustment)
+                .Sum(x => x.Amount);
 
-        folio.Total = Money(Math.Max(0m, charges + taxes - discounts));
-        var paid = folio.Payments.Where(x => x.Status is PaymentStatus.Paid or PaymentStatus.PartiallyPaid).Sum(x => x.Amount);
-        var refunded = folio.Payments.SelectMany(x => x.Refunds).Where(x => x.Status == RefundStatus.Completed).Sum(x => x.Amount);
-        var difference = Money(folio.Total - paid + refunded);
-        folio.Balance = Math.Max(0m, difference);
-        folio.CreditBalance = Math.Max(0m, -difference);
+        var taxes =
+            active.Sum(x => x.Tax);
+
+        var discounts =
+            active
+                .Where(x =>
+                    x.Type == FolioItemType.Discount)
+                .Sum(x => x.Amount);
+
+        folio.Total =
+            Money(
+                Math.Max(
+                    0m,
+                    charges + taxes - discounts));
+
+        var paid =
+            folio.Payments
+                .Where(x =>
+                    x.Status is
+                        PaymentStatus.Paid
+                        or PaymentStatus.PartiallyPaid
+                        or PaymentStatus.PartiallyRefunded
+                        or PaymentStatus.Refunded)
+                .Sum(x => x.Amount);
+
+        var refunded =
+            folio.Payments
+                .SelectMany(x => x.Refunds)
+                .Where(x =>
+                    x.Status == RefundStatus.Completed)
+                .Sum(x => x.Amount);
+
+        var difference =
+            Money(
+                folio.Total - paid + refunded);
+
+        folio.Balance =
+            Math.Max(
+                0m,
+                difference);
+
+        folio.CreditBalance =
+            Math.Max(
+                0m,
+                -difference);
     }
 
     private static FolioSummaryDto Summary(Folio x)

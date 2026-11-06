@@ -653,8 +653,7 @@ namespace HotelHup.APPLICATION.services.implementation
                         x.Type is
                             FolioItemType.RoomCharge
                             or FolioItemType.Service
-                            or FolioItemType.Tax
-                            or FolioItemType.Fee
+                             or FolioItemType.Fee
                             or FolioItemType.Adjustment)
                     .Sum(x => x.Amount);
 

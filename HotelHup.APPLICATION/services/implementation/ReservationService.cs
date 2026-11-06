@@ -309,9 +309,8 @@ public sealed class ReservationService : IReservationService
         };
         UpsertReservationRoomChargeItem(
            folio,
-           reservation.TotalAmount,
-           reservation.TotalTaxAmount,
-           actor.Id,
+           reservation,
+            actor.Id,
            now);
         try 
         {
@@ -532,9 +531,8 @@ public sealed class ReservationService : IReservationService
 
                 UpsertReservationRoomChargeItem(
                     reservation.Folio,
-                    reservation.TotalAmount,
-                    reservation.TotalTaxAmount,
-                    actor.Id,
+                    reservation,
+                     actor.Id,
                     now);
                 reservation.Folio.Total = reservation.TotalAmount;
                  ReconcileFolio(reservation.Folio);
@@ -803,9 +801,8 @@ public sealed class ReservationService : IReservationService
 
         UpsertReservationRoomChargeItem(
             reservation.Folio,
-            reservation.TotalAmount,
-            reservation.TotalTaxAmount,
-            actor.Id,
+            reservation,
+             actor.Id,
             now);
 
         reservation.Folio.Total =
@@ -987,9 +984,8 @@ public sealed class ReservationService : IReservationService
         
         UpsertReservationRoomChargeItem(
             reservation.Folio,
-            reservation.TotalAmount,
-            reservation.TotalTaxAmount,
-            actor.Id,
+            reservation,
+             actor.Id,
             now);
 
       
@@ -1311,9 +1307,8 @@ public sealed class ReservationService : IReservationService
 
         UpsertReservationRoomChargeItem(
             reservation.Folio,
-            reservation.TotalAmount,
-            reservation.TotalTaxAmount,
-            actor.Id,
+            reservation,
+             actor.Id,
             now);
 
         reservation.Folio.Total =
@@ -1723,8 +1718,7 @@ public sealed class ReservationService : IReservationService
 
         UpsertReservationRoomChargeItem(
             reservation.Folio,
-            reservation.TotalAmount,
-            reservation.TotalTaxAmount,
+             reservation,
             actor.Id,
             now);
 
@@ -2692,12 +2686,36 @@ public sealed class ReservationService : IReservationService
 
     private static void UpsertReservationRoomChargeItem(
      Folio folio,
-     decimal amount,
-     decimal taxAmount,
+     Reservation reservation,
      string actorId,
      DateTimeOffset now)
     {
-         
+        var totalAmount =
+            Money(
+                Math.Max(
+                    0m,
+                    reservation.TotalAmount));
+
+        var totalTaxAmount =
+            Money(
+                Math.Max(
+                    0m,
+                    reservation.TotalTaxAmount));
+
+        /*
+         * FolioItem.Amount يجب أن يكون قبل الضرائب.
+         *
+         * مثال:
+         * TotalAmount = 1150
+         * TotalTaxAmount = 150
+         * Amount = 1000
+         */
+        var amountBeforeTaxes =
+            Money(
+                Math.Max(
+                    0m,
+                    totalAmount - totalTaxAmount));
+
         var roomCharge =
             folio.Items
                 .FirstOrDefault(
@@ -2707,7 +2725,6 @@ public sealed class ReservationService : IReservationService
                         x.SourceReference ==
                             "RESERVATION_ROOM_CHARGE");
 
-         
         roomCharge ??=
             folio.Items
                 .FirstOrDefault(
@@ -2715,59 +2732,59 @@ public sealed class ReservationService : IReservationService
                         x.Type == FolioItemType.RoomCharge &&
                         x.Status != FolioItemStatus.Voided);
 
-         
         if (roomCharge is null)
         {
-            roomCharge =
-                new FolioItem
-                {
-                    Type =
-                        FolioItemType.RoomCharge,
+            roomCharge = new FolioItem
+            {
+                Type = FolioItemType.RoomCharge,
 
-                    Description =
-                        "Reservation lodging total",
+                Description =
+                    "Reservation lodging total",
 
-                   
-                    Amount =
-                        Money(amount),
+                /*
+                 * السعر قبل كل الضرائب
+                 */
+                Amount = amountBeforeTaxes,
 
-                     
-                    Tax =
-                        Money(taxAmount),
+                /*
+                 * إجمالي كل ضرائب الحجز
+                 */
+                Tax = totalTaxAmount,
 
-                    Source =
-                        FolioItemSource.Room,
+                Source = FolioItemSource.Room,
 
-                    SourceReference =
-                        "RESERVATION_ROOM_CHARGE",
+                SourceReference =
+                    "RESERVATION_ROOM_CHARGE",
 
-                    Status =
-                        FolioItemStatus.Posted,
+                Status = FolioItemStatus.Posted,
 
-                    PostedAt =
-                        now,
+                PostedAt = now,
 
-                    CreatedAt =
-                        now,
+                CreatedAt = now,
 
-                    CreatedBy =
-                        actorId
-                };
+                CreatedBy = actorId
+            };
 
             folio.Items.Add(roomCharge);
 
             return;
         }
 
-       
         roomCharge.Description =
             "Reservation lodging total";
 
+        /*
+         * لا تضع TotalAmount هنا.
+         * ضع القيمة قبل الضرائب.
+         */
         roomCharge.Amount =
-            Money(amount);
+            amountBeforeTaxes;
 
+        /*
+         * إجمالي الضرائب فقط.
+         */
         roomCharge.Tax =
-            Money(taxAmount);
+            totalTaxAmount;
 
         roomCharge.Source =
             FolioItemSource.Room;
@@ -2788,20 +2805,89 @@ public sealed class ReservationService : IReservationService
             actorId;
     }
 
-    private static void ReconcileFolio(Folio folio)
-    {
-        var grossPaid = folio.Payments
-            .Where(x => x.Status is PaymentStatus.Paid or PaymentStatus.PartiallyPaid)
-            .Sum(x => x.Amount);
-        var refunded = folio.Payments
-            .SelectMany(x => x.Refunds)
-            .Where(x => x.Status == RefundStatus.Completed)
-            .Sum(x => x.Amount);
-        var netPaid = Money(Math.Max(0m, grossPaid - refunded));
-        var difference = Money(folio.Total - netPaid);
 
-        folio.Balance = Math.Max(0m, difference);
-        folio.CreditBalance = Math.Max(0m, -difference);
+    private static void ReconcileFolio(
+        Folio folio)
+    {
+        var activeItems =
+            folio.Items
+                .Where(x =>
+                    x.Status == FolioItemStatus.Posted)
+                .ToList();
+
+        /*
+         * Amount دائمًا قبل الضريبة.
+         *
+         * لا نضيف FolioItemType.Tax كـ charge مستقل،
+         * لأن الضريبة موجودة في Tax property للبند الأساسي.
+         */
+        var charges =
+            activeItems
+                .Where(x =>
+                    x.Type is
+                        FolioItemType.RoomCharge
+                        or FolioItemType.Service
+                        or FolioItemType.Fee
+                        or FolioItemType.Adjustment)
+                .Sum(x => x.Amount);
+
+        /*
+         * إجمالي ضرائب كل البنود.
+         */
+        var taxes =
+            activeItems.Sum(x => x.Tax);
+
+        /*
+         * الخصم مخزن كمبلغ موجب ويتم طرحه.
+         */
+        var discounts =
+            activeItems
+                .Where(x =>
+                    x.Type == FolioItemType.Discount)
+                .Sum(x => x.Amount);
+
+        folio.Total =
+            Money(
+                Math.Max(
+                    0m,
+                    charges + taxes - discounts));
+
+        var grossPaid =
+            folio.Payments
+                .Where(x =>
+                    x.Status is
+                        PaymentStatus.Paid
+                        or PaymentStatus.PartiallyPaid
+                        or PaymentStatus.PartiallyRefunded
+                        or PaymentStatus.Refunded)
+                .Sum(x => x.Amount);
+
+        var refunded =
+            folio.Payments
+                .SelectMany(x => x.Refunds)
+                .Where(x =>
+                    x.Status == RefundStatus.Completed)
+                .Sum(x => x.Amount);
+
+        var netPaid =
+            Money(
+                Math.Max(
+                    0m,
+                    grossPaid - refunded));
+
+        var difference =
+            Money(
+                folio.Total - netPaid);
+
+        folio.Balance =
+            Math.Max(
+                0m,
+                difference);
+
+        folio.CreditBalance =
+            Math.Max(
+                0m,
+                -difference);
     }
 
     private static ReservationSummaryResponse
