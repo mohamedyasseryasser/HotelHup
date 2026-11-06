@@ -36,4 +36,10 @@ public interface IServiceService
         int serviceId,
         DeactivateServiceRequest request,
         CancellationToken cancellationToken = default);
+
+    Task<ResponseStatus<ServiceResponse>> ActivateAsync(
+      User actor,
+      int propertyId,
+      int serviceId,
+       CancellationToken cancellationToken = default);
 }

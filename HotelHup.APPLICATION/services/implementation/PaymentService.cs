@@ -17,14 +17,14 @@ namespace HotelHup.APPLICATION.services.implementation
 {
     public sealed class PaymentService : IPaymentService
     {
-        private readonly IPaymentRepository _repository;
+         private readonly IPaymentRepository _repository;
         private readonly IUserRepository _users;
 
         public PaymentService(
             IPaymentRepository repository,
             IUserRepository users)
         {
-            _repository = repository;
+             _repository = repository;
             _users = users;
         }
 
@@ -449,6 +449,19 @@ namespace HotelHup.APPLICATION.services.implementation
                                 access.Code,
                                 access.StatusCode);
                         }
+                    }
+
+                    var cancellationSnapshot =
+     payment.Folio
+         .Reservation
+         .CancellationPolicySnapshot;
+
+                    if (cancellationSnapshot?.IsNonRefundable == true)
+                    {
+                        return Fail<PaymentResponseDto>(
+                            "Refund is not allowed because the cancellation policy is non-refundable.",
+                            "REFUND_NOT_ALLOWED_BY_CANCELLATION_POLICY",
+                            409);
                     }
 
                     // Business Rule: Only successful payments can be refunded.

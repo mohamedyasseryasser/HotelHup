@@ -85,6 +85,17 @@ public sealed class ReportService : IReportService
             .Distinct()
             .ToHashSet();
 
+
+
+
+
+        //10-----------13------14---------15---------------16--------------------17
+
+
+
+
+
+
         var soldNights = reservations
             .Where(x =>
                 x.Status is not ReservationStatus.Cancelled
@@ -924,7 +935,7 @@ public sealed class ReportService : IReportService
 
         return new ResponseStatus<int?>(propertyId);
     }
-
+    //10--------------12----------------15---------------------16-----------------------17
     private static int OverlapNights(
         DateTime start,
         DateTime end,

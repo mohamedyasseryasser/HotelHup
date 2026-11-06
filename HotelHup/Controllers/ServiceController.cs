@@ -130,7 +130,7 @@ public sealed class ServicesController : ControllerBase
         int id,
         [FromQuery] int propertyId,
         [FromBody] DeactivateServiceRequest request,
-        CancellationToken cancellationToken)
+         CancellationToken cancellationToken)
     {
         var validation = ValidateModelState();
         if (validation is not null)
@@ -151,7 +151,32 @@ public sealed class ServicesController : ControllerBase
             request,
             cancellationToken));
     }
+    [HttpPost("{id:int}/Activate")]
+    [Authorize(Policy = Permissions.Services.Update)]
+    public async Task<IActionResult> Activate(
+       int id,
+       [FromQuery] int propertyId,
+      
+       CancellationToken cancellationToken)
+    {
+        var validation = ValidateModelState();
+        if (validation is not null)
+        {
+            return validation;
+        }
 
+        var actor = await GetCurrentUserAsync();
+        if (!actor.Success || actor.Data is null)
+        {
+            return Result(actor);
+        }
+
+        return Result(await _service.ActivateAsync(
+            actor.Data,
+            propertyId,
+            id,
+             cancellationToken));
+    }
     private async Task<ResponseStatus<User>> GetCurrentUserAsync()
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)

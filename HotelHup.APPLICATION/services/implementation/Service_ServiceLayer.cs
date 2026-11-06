@@ -416,7 +416,77 @@ public sealed class ServiceService : IServiceService
                 409);
         }
     }
+    public async Task<ResponseStatus<ServiceResponse>> ActivateAsync(
+       User actor,
+       int propertyId,
+       int serviceId,
+        CancellationToken cancellationToken = default)
+    {
+        var access = await AuthorizeAsync(
+            actor,
+            propertyId,
+            Permissions.Services.Deactivate,
+            cancellationToken);
 
+        if (!access.Success)
+        {
+            return Fail<ServiceResponse>(
+                access.Message,
+                access.Code,
+                access.StatusCode);
+        }
+
+        var service = await _repository.GetByIdAsync(
+            propertyId,
+            serviceId,
+            true,
+            cancellationToken);
+
+        if (service is null)
+        {
+            return Fail<ServiceResponse>(
+                "Service was not found.",
+                "SERVICE_NOT_FOUND",
+                404);
+        }
+
+        if (service.IsActive)
+        {
+            return Fail<ServiceResponse>(
+                "Service is already active.",
+                "SERVICE_ALREADY_ACTIVE",
+                409);
+        }
+
+        var oldValues = Map(service);
+        service.IsActive = true;
+        service.UpdatedAt = DateTimeOffset.UtcNow;
+        service.UpdatedBy = actor.Id;
+
+        try
+        {
+            await _repository.PersistAsync(
+                service,
+                CreateAudit(
+                    actor,
+                    propertyId,
+                    service.id.ToString(),
+                    "Service.Activated",
+                    oldValues,
+                    service,
+                    "activate"),
+                cancellationToken);
+
+            return Ok(Map(service), "Service deactivated.");
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Fail<ServiceResponse>(
+                "The service was modified by another request.",
+                "CONCURRENCY_CONFLICT",
+                409);
+        }
+    }
     private async Task<ResponseStatus<bool>> AuthorizeAsync(
         User actor,
         int propertyId,

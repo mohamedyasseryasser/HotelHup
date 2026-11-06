@@ -7,6 +7,7 @@ using HotelHup.CORE.Enums;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 using HotelHup.APPLICATION.Constant;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace HotelHup.APPLICATION.services.implementation;
 
@@ -53,7 +54,7 @@ public sealed class FolioService : IFolioService
                     return Fail<FolioResponseDto>("Closed folio cannot accept new items.", "FOLIO_CLOSED", 409);
                 }
                 if (!Enum.IsDefined(request.Type) || !Enum.IsDefined(request.Source) || request.Amount <= 0 || request.Tax < 0)
-                {
+                { 
                     return Fail<FolioResponseDto>("Amount, tax, type and source are invalid.", "INVALID_FOLIO_AMOUNT", 422);
                 }
                 if (request.Type is FolioItemType.Payment or FolioItemType.Refund)
@@ -130,7 +131,7 @@ public sealed class FolioService : IFolioService
         {
             return await _repository.ExecuteTransactionAsync(async () =>
             {
-                var folio = await _repository.GetForUpdateAsync(folioId, ct);
+                var folio = await _repository.GetForUpdateAsync(folioId, ct);   
                 if (folio is null)
                 {
                     return Fail<FolioResponseDto>("Folio was not found.", "FOLIO_NOT_FOUND", 404);
@@ -148,7 +149,15 @@ public sealed class FolioService : IFolioService
                 {
                     return Fail<FolioResponseDto>("Folio item was not found.", "FOLIO_ITEM_NOT_FOUND", 404);
                 }
-                if (item.Status != FolioItemStatus.Posted) return Fail<FolioResponseDto>("Folio item is already voided or reversed.", "FOLIO_ITEM_ALREADY_VOIDED", 409);
+                if (item.Status != FolioItemStatus.Posted)
+                {
+                    return Fail<FolioResponseDto>("Folio item is already voided or reversed.", "FOLIO_ITEM_ALREADY_VOIDED", 409);
+                }
+                if (item.Type==FolioItemType.RoomCharge)
+                {
+                    return Fail<FolioResponseDto>("Folio item is room charge can not voided.", "FOLIO_ITEM_ALREADY_VOIDED", 409);
+
+                }
                 if (string.IsNullOrWhiteSpace(request.Reason))
                 {
                     return Fail<FolioResponseDto>("A reason is required.", "REASON_REQUIRED", 422);

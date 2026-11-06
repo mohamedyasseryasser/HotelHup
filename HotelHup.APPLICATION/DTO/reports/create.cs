@@ -60,7 +60,6 @@ public sealed class HousekeepingReportRequest : ReportRequest
 }
 
  
-
 public sealed class OccupancyReportResponse
 {
     public int PropertyId { get; init; }
