@@ -23,7 +23,11 @@ CancellationToken ct = default)
        int propertyId,
        int policyId,
        CancellationToken cancellationToken = default);
-            Task<IReadOnlyList<CancellationPolicy>> GetCancellationPoliciesAsync(int propertyId, CancellationToken cancellationToken = default);
+        Task<IReadOnlyList<CancellationPolicy>>
+            GetCancellationPoliciesAsync(
+                int propertyId,
+                DateTimeOffset? validFrom = null,
+                 CancellationToken cancellationToken = default);
         Task<CancellationPolicy?> GetCancellationPolicyAsync(int propertyId, int policyId, CancellationToken cancellationToken = default);
         Task<CancellationPolicy?>
             GetTrackedCancellationPolicyAsync(

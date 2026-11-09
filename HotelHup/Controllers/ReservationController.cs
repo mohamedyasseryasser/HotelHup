@@ -48,13 +48,31 @@ public sealed class ReservationController : ControllerBase
         return Result(await _service.GetAsync(actor.Data, propertyId, id, ct));
     }
 
-    [HttpGet("reservations/{id:int}/status-history")]
-    [Authorize(Policy = Permissions.Reservations.Read)]
-    public async Task<IActionResult> StatusHistory(int id, [FromQuery] int propertyId, CancellationToken ct)
+    [HttpGet(
+      "reservations/{id:int}/status-history")]
+    [Authorize(
+      Policy = Permissions.Reservations.Read)]
+    public async Task<IActionResult> StatusHistory(
+      int id,
+      [FromQuery] int propertyId,
+      CancellationToken ct)
     {
-        var actor = await GetActor(); if (!actor.Success || actor.Data is null) return Result(actor);
-        return Result(await _service.GetStatusHistoryAsync(actor.Data, propertyId, id, ct));
+        var actor = await GetActor();
+
+        if (!actor.Success ||
+            actor.Data is null)
+        {
+            return Result(actor);
+        }
+
+        return Result(
+            await _service.GetStatusHistoryAsync(
+                actor.Data,
+                propertyId,
+                id,
+                ct));
     }
+
 
     [HttpPost("reservations")]
     [Authorize(Policy = Permissions.Reservations.Create)]

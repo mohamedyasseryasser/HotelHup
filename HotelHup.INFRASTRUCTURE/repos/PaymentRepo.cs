@@ -17,16 +17,25 @@ namespace HotelHup.INFRASTRUCTURE.repos
         private readonly hotelhupContext _context;
         public PaymentRepository(hotelhupContext context) => _context = context;
 
-        public async Task<Payment?> GetByIdAsync(int id, bool tracking, CancellationToken ct = default)
+        public async Task<Payment?> GetByIdAsync(
+            int id,
+            bool tracking,
+            CancellationToken ct = default)
         {
-            IQueryable<Payment> query = _context.Payments
-                .Include(x => x.Refunds)
-                .Include(x => x.Folio).ThenInclude(x => x.Reservation)
-                .Include(x => x.Folio).ThenInclude(x => x.Items)
-                .Include(x => x.Folio).ThenInclude(x => x.Payments).ThenInclude(x => x.Refunds)
-                .Where(x => x.Id == id);
-            return  await (tracking ? query : query.AsNoTracking()).SingleOrDefaultAsync(ct);
+            IQueryable<Payment> query =
+                _context.Payments
+                    .Include(x => x.Refunds)
+                    .Include(x => x.Folio)
+                        .ThenInclude(x => x.Reservation)
+                    .Where(x => x.Id == id);
+
+            return await (
+                tracking
+                    ? query
+                    : query.AsNoTracking()
+            ).SingleOrDefaultAsync(ct);
         }
+
 
         public async Task<IReadOnlyList<Payment>> GetByFolioIdAsync(int folioId, CancellationToken ct = default) =>
             await _context.Payments.AsNoTracking().Include(x => x.Refunds)

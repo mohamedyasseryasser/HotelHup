@@ -20,7 +20,12 @@ namespace HotelHup.APPLICATION.services.interfaces
         Task<ResponseStatus<ReservationActionResponse>> CheckInAsync(User actor, int propertyId, int id, CheckInRequest request, CancellationToken ct = default);
         Task<ResponseStatus<ReservationActionResponse>> CheckOutAsync(User actor, int propertyId, int id, CheckOutRequest request, CancellationToken ct = default);
         Task<ResponseStatus<ReservationActionResponse>> NoShowAsync(User actor, int propertyId, int id, NoShowRequest request, CancellationToken ct = default);
-        Task<ResponseStatus<IReadOnlyList<ReservationStatusHistoryResponse>>> GetStatusHistoryAsync(User actor, int propertyId, int id, CancellationToken ct = default);
+        Task<ResponseStatus<ReservationHistoryResponse>>
+            GetStatusHistoryAsync(
+                User actor,
+                int propertyId,
+                int id,
+                CancellationToken ct = default);
         Task<ResponseStatus<ReservationActionResponse>>
     ExtendCheckoutAsync(
         User actor,

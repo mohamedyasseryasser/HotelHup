@@ -40,30 +40,41 @@ namespace HotelHup.APPLICATION.services.implementation
             PropertyRepository = propertyRepository;
             _repo = repo;
         }
-        public async Task<ResponseStatus<IReadOnlyList<DepositPolicyResponse>>>
-            GetDepositPoliciesAsync(
-          User actor, int propertyId,
-            CancellationToken ct = default)
+        public async Task<
+     ResponseStatus<IReadOnlyList<DepositPolicyResponse>>>
+     GetDepositPoliciesAsync(
+         User actor,
+         int propertyId,
+         DateTimeOffset? validFrom = null,
+         CancellationToken ct = default)
         {
-            var auth =
-        await AuthorizeAsync(
-            actor.Id,
-            propertyId,
-            ct);
+            var authorization =
+                await AuthorizeAsync(
+                    actor.Id,
+                    propertyId,
+                    ct);
 
-            if (!auth.Success)
-                return Fail<IReadOnlyList<DepositPolicyResponse>>(auth);
+            if (!authorization.Success)
+            {
+                return Fail<IReadOnlyList<DepositPolicyResponse>>(
+                    authorization);
+            }
 
             var policies =
                 await _repo.GetDepositPoliciesAsync(
                     propertyId,
+                    validFrom,
                     ct);
 
-            return Ok<IReadOnlyList<DepositPolicyResponse>>(
+            var response =
                 policies
                     .Select(ToResponse)
-                    .ToArray());
+                    .ToArray();
+
+            return Ok<IReadOnlyList<DepositPolicyResponse>>(
+                response);
         }
+
 
         public async Task<
           ResponseStatus<DepositPolicyResponse>>

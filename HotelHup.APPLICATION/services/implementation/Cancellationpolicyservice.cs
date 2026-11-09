@@ -37,7 +37,7 @@ namespace HotelHup.APPLICATION.services.implementation
         }
 
         public async Task<ResponseStatus<IReadOnlyList<CancellationPolicyResponse>>>
-            GetCancellationPoliciesAsync(User actor, int propertyId,
+            GetCancellationPoliciesAsync(DateTimeOffset? validatefrom,User actor, int propertyId,
             CancellationToken ct = default)
         {
 
@@ -54,10 +54,11 @@ namespace HotelHup.APPLICATION.services.implementation
                     authorization.Message,
                     authorization.StatusCode);
             }
+            
 
             var policies =
                 await _repo.GetCancellationPoliciesAsync(
-                    propertyId,
+                     propertyId,validatefrom,
                     ct);
 
             var response =

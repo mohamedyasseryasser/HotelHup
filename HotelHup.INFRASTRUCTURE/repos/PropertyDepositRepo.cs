@@ -20,16 +20,60 @@ namespace HotelHup.INFRASTRUCTURE.repos
         {
             _context = context;
         }
-        public async Task<IReadOnlyList<DepositPolicy>> GetDepositPoliciesAsync(
-         int propertyId, CancellationToken ct = default)
+        public async Task<IReadOnlyList<DepositPolicy>>
+     GetDepositPoliciesAsync(
+         int propertyId,
+         DateTimeOffset? validFrom = null,
+         CancellationToken cancellationToken = default)
         {
-            return await _context.DepositPolicies
-                .Where(x => x.PropertyId == propertyId)
-                .Include(x => x.Versions)
-                .OrderByDescending(x => x.CurrentVersion)
+            var baseQuery = _context.DepositPolicies
                 .AsNoTracking()
-                .ToListAsync(ct);
+                .Where(policy =>
+                    policy.PropertyId == propertyId);
+
+            /*
+             * لا يوجد validFrom:
+             * رجّع كل السياسات بكل الإصدارات.
+             */
+            if (!validFrom.HasValue)
+            {
+                return await baseQuery
+                    .Include(policy => policy.Versions)
+                    .OrderByDescending(policy => policy.CurrentVersion)
+                    .ThenBy(policy => policy.Name)
+                    .ToListAsync(cancellationToken);
+            }
+
+            /*
+             * يوجد validFrom:
+             * نبحث عن CurrentVersion فقط.
+             */
+            var requestedDate = validFrom.Value.Date;
+
+            return await baseQuery
+                .Where(policy =>
+                    policy.IsActive &&
+                    policy.Versions.Any(version =>
+                        version.Version == policy.CurrentVersion &&
+                        version.IsActive &&
+                        version.ValidFrom.Date <= requestedDate &&
+                        (
+                            version.ValidTo == null ||
+                            version.ValidTo.Value.Date >= requestedDate
+                        )))
+                .Include(policy =>
+                    policy.Versions.Where(version =>
+                        version.Version == policy.CurrentVersion &&
+                        version.IsActive &&
+                        version.ValidFrom.Date <= requestedDate &&
+                        (
+                            version.ValidTo == null ||
+                            version.ValidTo.Value.Date >= requestedDate
+                        )))
+                .OrderBy(policy => policy.Name)
+                .ToListAsync(cancellationToken);
         }
+
 
         public async Task<DepositPolicy?> GetDepositPolicyAsync(
             int propertyId, int policyId, CancellationToken ct = default)

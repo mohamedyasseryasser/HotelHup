@@ -68,25 +68,33 @@ namespace HotelHup.API.Controllers
         {
             return StatusCode(response.StatusCode, response);
         }
+      
         [HttpGet("{propertyId:int}/deposit-policies")]
         [Authorize(Policy = Permissions.Properties.Read)]
         public async Task<IActionResult> DepositPolicies(
-        int propertyId,
-        CancellationToken ct)
+    int propertyId,
+    [FromQuery] DateTimeOffset? validFrom,
+    CancellationToken ct)
         {
-            var user = await GetCurrentuserLogeined();
+            var user =
+                await GetCurrentuserLogeined();
 
-            if (!user.Success || user.Data == null)
+            if (!user.Success ||
+                user.Data is null)
+            {
                 return Result(user);
+            }
 
             var result =
                 await _service.GetDepositPoliciesAsync(
                     user.Data,
                     propertyId,
+                    validFrom,
                     ct);
 
             return Result(result);
         }
+
 
         [HttpGet("{propertyId:int}/deposit-policies/{policyId:int}")]
         [Authorize(Policy = Permissions.Properties.Read)]

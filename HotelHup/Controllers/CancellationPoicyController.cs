@@ -70,7 +70,7 @@ namespace HotelHup.API.Controllers
         [HttpGet("{propertyId:int}/cancellation-policies")]
         [Authorize(Policy = Permissions.Properties.Read)]
         public async Task<IActionResult> CancellationPolicies(
-            int propertyId,
+            int propertyId,DateTimeOffset? validatefrom,
             CancellationToken ct)
         {
             //authentaction check
@@ -80,7 +80,7 @@ namespace HotelHup.API.Controllers
                 return Result(CurrentUserLogin);
             }
             var result =
-                await _service.GetCancellationPoliciesAsync(
+                await _service.GetCancellationPoliciesAsync(validatefrom,
                     CurrentUserLogin.Data,propertyId,
                     ct);
 

@@ -119,66 +119,165 @@ public sealed class FolioService : IFolioService
         }
     }
 
-    public async Task<ResponseStatus<FolioResponseDto>> 
-        VoidItemAsync(
-        User actor, 
-        int folioId,
-        int itemId,
-        VoidFolioItemRequestDto request,
-        CancellationToken ct = default)
+    public async Task<ResponseStatus<FolioResponseDto>>
+     VoidItemAsync(
+         User actor,
+         int folioId,
+         int itemId,
+         VoidFolioItemRequestDto request,
+         CancellationToken ct = default)
     {
         try
         {
-            return await _repository.ExecuteTransactionAsync(async () =>
-            {
-                var folio = await _repository.GetForUpdateAsync(folioId, ct);   
-                if (folio is null)
+            return await _repository.ExecuteTransactionAsync(
+                async () =>
                 {
-                    return Fail<FolioResponseDto>("Folio was not found.", "FOLIO_NOT_FOUND", 404);
-                } var access = await AuthorizeAsync(actor, folio, Permissions.Folios.Update, ct);
-                if (!access.Success)
-                {
-                    return Fail<FolioResponseDto>(access.Message, access.Code, access.StatusCode);
-                }
-                if (folio.Status == FolioStatus.Closed)
-                {
-                    return Fail<FolioResponseDto>("Closed folio cannot be modified.", "FOLIO_CLOSED", 409);
-                }
-                var item = folio.Items.SingleOrDefault(x => x.id == itemId);
-                if (item is null)
-                {
-                    return Fail<FolioResponseDto>("Folio item was not found.", "FOLIO_ITEM_NOT_FOUND", 404);
-                }
-                if (item.Status != FolioItemStatus.Posted)
-                {
-                    return Fail<FolioResponseDto>("Folio item is already voided or reversed.", "FOLIO_ITEM_ALREADY_VOIDED", 409);
-                }
-                if (item.Type==FolioItemType.RoomCharge)
-                {
-                    return Fail<FolioResponseDto>("Folio item is room charge can not voided.", "FOLIO_ITEM_ALREADY_VOIDED", 409);
+                    var folio =
+                        await _repository.GetForUpdateAsync(
+                            folioId,
+                            ct);
 
-                }
-                if (string.IsNullOrWhiteSpace(request.Reason))
-                {
-                    return Fail<FolioResponseDto>("A reason is required.", "REASON_REQUIRED", 422);
-                }
-                if (!MatchesRowVersion(folio, request.ExpectedRowVersion))
-                {
-                    return Fail<FolioResponseDto>("The folio was modified by another request.", "FOLIO_CONCURRENCY_CONFLICT", 409);
-                }
-                item.Status = FolioItemStatus.Voided;
-                item.UpdatedAt = DateTimeOffset.UtcNow;
-                item.UpdatedBy = actor.Id;
-                Recalculate(folio);
-                await _repository.SaveAsync(folio, Audit(actor, folio, "FolioItem.Voided", item, item, request.Reason), ct);
-                return Ok(Map(folio), "Folio item voided.");
-            }, ct);
+                    if (folio is null)
+                    {
+                        return Fail<FolioResponseDto>(
+                            "Folio was not found.",
+                            "FOLIO_NOT_FOUND",
+                            404);
+                    }
+
+                    var access =
+                        await AuthorizeAsync(
+                            actor,
+                            folio,
+                            Permissions.Folios.Update,
+                            ct);
+
+                    if (!access.Success)
+                    {
+                        return Fail<FolioResponseDto>(
+                            access.Message,
+                            access.Code,
+                            access.StatusCode);
+                    }
+
+                    if (folio.Status == FolioStatus.Closed)
+                    {
+                        return Fail<FolioResponseDto>(
+                            "Closed folio cannot be modified.",
+                            "FOLIO_CLOSED",
+                            409);
+                    }
+
+                    var item =
+                        folio.Items.SingleOrDefault(
+                            x => x.id == itemId);
+
+                    if (item is null)
+                    {
+                        return Fail<FolioResponseDto>(
+                            "Folio item was not found.",
+                            "FOLIO_ITEM_NOT_FOUND",
+                            404);
+                    }
+
+                    if (item.Status != FolioItemStatus.Posted)
+                    {
+                        return Fail<FolioResponseDto>(
+                            "Folio item is already voided or reversed.",
+                            "FOLIO_ITEM_ALREADY_VOIDED",
+                            409);
+                    }
+
+                    if (string.IsNullOrWhiteSpace(
+                            request.Reason))
+                    {
+                        return Fail<FolioResponseDto>(
+                            "A reason is required.",
+                            "REASON_REQUIRED",
+                            422);
+                    }
+
+                    if (request.Reason.Trim().Length < 3)
+                    {
+                        return Fail<FolioResponseDto>(
+                            "The reason must contain at least 3 characters.",
+                            "REASON_TOO_SHORT",
+                            422);
+                    }
+
+                    if (request.Reason.Trim().Length > 500)
+                    {
+                        return Fail<FolioResponseDto>(
+                            "The reason cannot exceed 500 characters.",
+                            "REASON_TOO_LONG",
+                            422);
+                    }
+
+                    if (!MatchesRowVersion(
+                            folio,
+                            request.ExpectedRowVersion))
+                    {
+                        return Fail<FolioResponseDto>(
+                            "The folio was modified by another request.",
+                            "FOLIO_CONCURRENCY_CONFLICT",
+                            409);
+                    }
+
+                    var oldItem = new
+                    {
+                        Id = item.id,
+                        Status = item.Status,
+                        Amount = item.Amount,
+                        Tax = item.Tax,
+                        Description = item.Description
+                    };
+
+                    item.Status =
+                        FolioItemStatus.Voided;
+
+                    item.UpdatedAt =
+                        DateTimeOffset.UtcNow;
+
+                    item.UpdatedBy =
+                        actor.Id;
+
+                    Recalculate(folio);
+
+                    var newItem = new
+                    {
+                        Id = item.id,
+                        Status = item.Status,
+                        Amount = item.Amount,
+                        Tax = item.Tax,
+                        Description = item.Description
+                    };
+
+                    await _repository.SaveAsync(
+                        folio,
+                        Audit(
+                            actor,
+                            folio,
+                            "FolioItem.Voided",
+                            oldItem,
+                            newItem,
+                            request.Reason.Trim()),
+                        ct);
+
+                    return Ok(
+                        Map(folio),
+                        "Folio item voided.");
+                },
+                ct);
         }
         catch (DbUpdateConcurrencyException)
         {
-            return Fail<FolioResponseDto>("The folio was modified by another request.", "FOLIO_CONCURRENCY_CONFLICT", 409);
+            return Fail<FolioResponseDto>(
+                "The folio was modified by another request.",
+                "FOLIO_CONCURRENCY_CONFLICT",
+                409);
         }
     }
+
 
     public Task<ResponseStatus<FolioResponseDto>>
         ReopenAsync(
@@ -333,65 +432,181 @@ public sealed class FolioService : IFolioService
         var active = x.Items.Where(i => i.Status == FolioItemStatus.Posted).ToList();
         return new FolioSummaryDto { GrossTotal = x.Total, TotalCharges = Money(active.Where(i => i.Type != FolioItemType.Discount).Sum(i => i.Amount)), Discounts = Money(active.Where(i => i.Type == FolioItemType.Discount).Sum(i => i.Amount)), Taxes = Money(active.Sum(i => i.Tax)), Fees = Money(active.Where(i => i.Type == FolioItemType.Fee).Sum(i => i.Amount)), Payments = Money(x.Payments.Where(p => p.Status is PaymentStatus.Paid or PaymentStatus.PartiallyPaid).Sum(p => p.Amount)), Refunds = Money(x.Payments.SelectMany(p => p.Refunds).Where(r => r.Status == RefundStatus.Completed).Sum(r => r.Amount)), Balance = x.Balance };
     }
-    private async Task<ResponseStatus<FolioResponseDto>> ChangeStatusAsync(
-        User actor, 
-        int folioId, 
-        FolioStatus status,
-        string reason,
-        string? expected, 
-        string action,
-        CancellationToken ct)
+    private async Task<ResponseStatus<FolioResponseDto>>
+      ChangeStatusAsync(
+          User actor,
+          int folioId,
+          FolioStatus status,
+          string reason,
+          string? expected,
+          string action,
+          CancellationToken ct)
     {
         try
         {
-            return await _repository.ExecuteTransactionAsync(async () =>
-            {
-                var folio = await _repository.GetForUpdateAsync(folioId, ct);
-                if (folio is null)
+            return await _repository.ExecuteTransactionAsync(
+                async () =>
                 {
-                    return Fail<FolioResponseDto>("Folio was not found.", "FOLIO_NOT_FOUND", 404);
-                }
-                var permission = status == FolioStatus.Open ? Permissions.Folios.Reopen : Permissions.Folios.Close;
-                var access = await AuthorizeAsync(actor, folio, permission, ct);
-                if (!access.Success)
-                {
-                    return Fail<FolioResponseDto>(access.Message, access.Code, access.StatusCode);
-                }
-                if (string.IsNullOrWhiteSpace(reason))
-                {
-                    return Fail<FolioResponseDto>("A reason is required.", "REASON_REQUIRED", 422);
-                }
-                if (!MatchesRowVersion(folio, expected))
-                {
-                    return Fail<FolioResponseDto>("The folio was modified by another request.", "FOLIO_CONCURRENCY_CONFLICT", 409);
-                }
-                if (status == folio.Status)
-                {
-                    return Fail<FolioResponseDto>("Folio is already in the requested state.", "INVALID_FOLIO_STATE", 409);
-                }
-                var old = new { folio.Status, folio.Total, folio.Balance };
-                folio.Status = status;
-                folio.UpdatedAt = DateTimeOffset.UtcNow;  
-                folio.UpdatedBy = actor.Id;
-                if (status == FolioStatus.Closed)
-                {
-                    folio.ClosedAt = folio.UpdatedAt;
-                    folio.ClosedBy = actor.Id;
-                }
-                else 
-                {
-                    folio.ClosedAt = null; 
-                    folio.ClosedBy = null; 
-                }
-                await _repository.SaveAsync(folio, Audit(actor, folio, action, old, 
-                    new 
-                    { folio.Status, folio.Total, folio.Balance }, reason), ct);
-                return Ok(Map(folio), $"Folio {status.ToString().ToLowerInvariant()}.");
-            }, ct);
+                    var folio =
+                        await _repository.GetForUpdateAsync(
+                            folioId,
+                            ct);
+
+                    if (folio is null)
+                    {
+                        return Fail<FolioResponseDto>(
+                            "Folio was not found.",
+                            "FOLIO_NOT_FOUND",
+                            404);
+                    }
+
+                    var permission =
+                        status == FolioStatus.Open
+                            ? Permissions.Folios.Reopen
+                            : Permissions.Folios.Close;
+
+                    var access =
+                        await AuthorizeAsync(
+                            actor,
+                            folio,
+                            permission,
+                            ct);
+
+                    if (!access.Success)
+                    {
+                        return Fail<FolioResponseDto>(
+                            access.Message,
+                            access.Code,
+                            access.StatusCode);
+                    }
+
+                    if (string.IsNullOrWhiteSpace(reason))
+                    {
+                        return Fail<FolioResponseDto>(
+                            "A reason is required.",
+                            "REASON_REQUIRED",
+                            422);
+                    }
+
+                    if (reason.Trim().Length < 3)
+                    {
+                        return Fail<FolioResponseDto>(
+                            "The reason must contain at least 3 characters.",
+                            "REASON_TOO_SHORT",
+                            422);
+                    }
+
+                    if (reason.Trim().Length > 500)
+                    {
+                        return Fail<FolioResponseDto>(
+                            "The reason cannot exceed 500 characters.",
+                            "REASON_TOO_LONG",
+                            422);
+                    }
+
+                    if (!MatchesRowVersion(folio, expected))
+                    {
+                        return Fail<FolioResponseDto>(
+                            "The folio was modified by another request.",
+                            "FOLIO_CONCURRENCY_CONFLICT",
+                            409);
+                    }
+
+                    if (status == folio.Status)
+                    {
+                        return Fail<FolioResponseDto>(
+                            "Folio is already in the requested state.",
+                            "INVALID_FOLIO_STATE",
+                            409);
+                    }
+
+                    /*
+                     * لا نغلق Folio إلا بعد التأكد من السداد.
+                     */
+                    if (status == FolioStatus.Closed)
+                    {
+                        Recalculate(folio);
+
+                        var hasPendingPayment =
+                            folio.Payments.Any(
+                                x => x.Status ==
+                                    PaymentStatus.Pending);
+
+                        if (hasPendingPayment)
+                        {
+                            return Fail<FolioResponseDto>(
+                                "A payment is still pending.",
+                                "PENDING_PAYMENT",
+                                409);
+                        }
+
+                        if (folio.Balance > 0.01m)
+                        {
+                            return Fail<FolioResponseDto>(
+                                $"The folio balance must be settled before closing. " +
+                                $"Outstanding balance: {folio.Balance:0.00}.",
+                                "BALANCE_NOT_SETTLED",
+                                409);
+                        }
+                    }
+
+                    var old = new
+                    {
+                        Status = folio.Status,
+                        Total = folio.Total,
+                        Balance = folio.Balance,
+                        CreditBalance = folio.CreditBalance
+                    };
+
+                    var now =
+                        DateTimeOffset.UtcNow;
+
+                    folio.Status = status;
+                    folio.UpdatedAt = now;
+                    folio.UpdatedBy = actor.Id;
+
+                    if (status == FolioStatus.Closed)
+                    {
+                        folio.ClosedAt = now;
+                        folio.ClosedBy = actor.Id;
+                    }
+                    else
+                    {
+                        folio.ClosedAt = null;
+                        folio.ClosedBy = null;
+                    }
+
+                    var newValues = new
+                    {
+                        Status = folio.Status,
+                        Total = folio.Total,
+                        Balance = folio.Balance,
+                        CreditBalance = folio.CreditBalance
+                    };
+
+                    await _repository.SaveAsync(
+                        folio,
+                        Audit(
+                            actor,
+                            folio,
+                            action,
+                            old,
+                            newValues,
+                            reason.Trim()),
+                        ct);
+
+                    return Ok(
+                        Map(folio),
+                        $"Folio {status.ToString().ToLowerInvariant()}.");
+                },
+                ct);
         }
         catch (DbUpdateConcurrencyException)
         {
-            return Fail<FolioResponseDto>("The folio was modified by another request.", "FOLIO_CONCURRENCY_CONFLICT", 409);
+            return Fail<FolioResponseDto>(
+                "The folio was modified by another request.",
+                "FOLIO_CONCURRENCY_CONFLICT",
+                409);
         }
     }
 

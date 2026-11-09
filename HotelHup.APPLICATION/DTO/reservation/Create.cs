@@ -142,7 +142,7 @@ public sealed class CheckInRequest
 {
     [Range(1, int.MaxValue)] public int? RoomId { get; init; }
     public ICollection<int> RoomIds { get; init; } = new List<int>();
-    public bool IdentityVerified { get; init; }
+    public bool? IdentityVerified { get; init; }
     [MaxLength(100)] public string? IdentityType { get; init; }
     [MaxLength(100)] public string? IdentityReference { get; init; }
     [MaxLength(1000)] public string? RegistrationNotes { get; init; }
@@ -270,12 +270,130 @@ public sealed class ReservationActionResponse
 }
 
 
+ 
+
+public sealed class ReservationHistoryResponse
+{
+    public int ReservationId { get; init; }
+
+    public int PropertyId { get; init; }
+
+    public IReadOnlyList<ReservationStatusHistoryResponse> StatusHistory
+    {
+        get;
+        init;
+    } = Array.Empty<ReservationStatusHistoryResponse>();
+
+    public ReservationSnapshotsResponse Snapshots
+    {
+        get;
+        init;
+    } = new();
+
+    public DateTimeOffset RetrievedAt { get; init; }
+}
+
 public sealed class ReservationStatusHistoryResponse
 {
     public int Id { get; init; }
+
     public ReservationStatus? FromStatus { get; init; }
+
     public ReservationStatus ToStatus { get; init; }
+
     public string? Reason { get; init; }
+
     public string? ActorId { get; init; }
+
     public DateTimeOffset ChangedAt { get; init; }
+}
+
+public sealed class ReservationSnapshotsResponse
+{
+    public int ReservationId { get; init; }
+
+    public int PropertyId { get; init; }
+
+    public CancellationPolicySnapshotResponse?
+        CancellationPolicy
+    {
+        get;
+        init;
+    }
+
+    public DepositPolicySnapshotResponse?
+        DepositPolicy
+    {
+        get;
+        init;
+    }
+
+    public IReadOnlyList<TaxSnapshotResponse> Taxes
+    {
+        get;
+        init;
+    } = Array.Empty<TaxSnapshotResponse>();
+
+    public DateTimeOffset RetrievedAt { get; init; }
+}
+
+public sealed class CancellationPolicySnapshotResponse
+{
+    public int Id { get; init; }
+
+    public string PolicyName { get; init; } = string.Empty;
+
+    public string Rules { get; init; } = "{}";
+
+    public int FreeCancellationHours { get; init; }
+
+    public decimal CancellationFeePercentage { get; init; }
+
+    public decimal FixedCancellationFee { get; init; }
+
+    public bool IsNonRefundable { get; init; }
+
+    public int CutoffHours { get; init; }
+
+    public DateTimeOffset CapturedAt { get; init; }
+}
+
+public sealed class DepositPolicySnapshotResponse
+{
+    public int Id { get; init; }
+
+    public string PolicyName { get; init; } = string.Empty;
+
+    public DepositType Type { get; init; }
+
+    public decimal Amount { get; init; }
+
+    public decimal Percentage { get; init; }
+
+    public decimal RequiredDepositAmount { get; init; }
+
+    public DateTimeOffset CapturedAt { get; init; }
+}
+
+public sealed class TaxSnapshotResponse
+{
+    public int Id { get; init; }
+
+    public string TaxCode { get; init; } = string.Empty;
+
+    public string TaxName { get; init; } = string.Empty;
+
+    public decimal Rate { get; init; }
+
+    public int Type { get; init; }
+
+    public bool IsInclusive { get; init; }
+
+    public decimal TaxableAmount { get; init; }
+
+    public decimal TaxAmount { get; init; }
+
+    public DateTimeOffset TaxValidFrom { get; init; }
+
+    public DateTimeOffset? TaxValidTo { get; init; }
 }

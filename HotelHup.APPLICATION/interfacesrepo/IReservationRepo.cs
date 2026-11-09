@@ -1,15 +1,8 @@
-﻿using HotelHup.APPLICATION.DTO.reservation;
+using HotelHup.APPLICATION.DTO.reservation;
 using HotelHup.CORE.Entities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace HotelHup.APPLICATION.interfacesrepo
 {
-
-
     public interface IReservationRepository
     {
         Task<Property?> GetPropertyAsync(int propertyId, CancellationToken ct = default);
@@ -25,23 +18,9 @@ namespace HotelHup.APPLICATION.interfacesrepo
         Task AddAsync(Reservation reservation, Folio folio, CancellationToken ct = default);
         Task SaveChangesAsync(CancellationToken ct = default);
         Task<T> ExecuteSerializableAsync<T>(Func<Task<T>> operation, CancellationToken ct = default);
-        Task PersistTransitionAsync(
-    Reservation reservation,
-    AuditLog audit,
-    CancellationToken ct = default);
+        Task PersistTransitionAsync(Reservation reservation, AuditLog audit, CancellationToken ct = default);
         Task PersistLifecycleAsync(Reservation reservation, IReadOnlyCollection<Room> rooms, IReadOnlyCollection<HousekeepingTask>? housekeepingTasks = null, CancellationToken ct = default);
-        Task<bool> IsRoomAvailableForExtensionAsync(
-        int propertyId,
-        int roomId,
-        int reservationId,
-        DateTime from,
-        DateTime to,
-        int adults,
-        int children,
-        CancellationToken ct = default);
-
-
+        Task<bool> IsRoomAvailableForExtensionAsync(int propertyId, int roomId, int reservationId, DateTime from, DateTime to, int adults, int children, CancellationToken ct = default);
+     //   Task<Reservation?> GetReservationWithSnapshotsAsync(int propertyId, int reservationId, CancellationToken ct = default);
     }
-
-
 }

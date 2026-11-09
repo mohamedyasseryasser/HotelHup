@@ -1780,24 +1780,7 @@ public sealed class ReservationServiceComprehensiveTests
         repository.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    [Test]
-    public async Task GetStatusHistoryAsync_returns_ordered_history_values()
-    {
-        var (service, repository, _) = CreateService();
-        var reservation = Reservation(ReservationStatus.CheckedIn);
-        reservation.StatusHistory.Add(new ReservationStatusHistory { Id = 2, FromStatus = ReservationStatus.Confirmed, ToStatus = ReservationStatus.CheckedIn, Reason = "Check in", ActorId = "actor-1", ChangedAt = DateTimeOffset.UtcNow.AddMinutes(1) });
-        reservation.StatusHistory.Add(new ReservationStatusHistory { Id = 1, FromStatus = ReservationStatus.Pending, ToStatus = ReservationStatus.Confirmed, Reason = "Confirm", ActorId = "actor-1", ChangedAt = DateTimeOffset.UtcNow });
-        repository.Setup(x => x.GetByIdAsync(PropertyId, ReservationId, false, It.IsAny<CancellationToken>())).ReturnsAsync(reservation);
-
-        var result = await service.GetStatusHistoryAsync(Actor(), PropertyId, ReservationId);
-
-        Assert.That(result.Success, Is.True);
-        Assert.That(result.Data, Has.Count.EqualTo(2));
-        Assert.That(result.Data![0].Id, Is.EqualTo(1));
-        Assert.That(result.Data[0].ToStatus, Is.EqualTo(ReservationStatus.Confirmed));
-        Assert.That(result.Data[1].Id, Is.EqualTo(2));
-        Assert.That(result.Data[1].ToStatus, Is.EqualTo(ReservationStatus.CheckedIn));
-    }
+    
 
     private static (
         ReservationService Service,

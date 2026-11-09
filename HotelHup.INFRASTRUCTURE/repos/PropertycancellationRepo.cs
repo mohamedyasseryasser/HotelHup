@@ -40,17 +40,71 @@ namespace HotelHup.INFRASTRUCTURE.repos
                         ),
                     cancellationToken);
         }
-        public async Task<IReadOnlyList<CancellationPolicy>> GetCancellationPoliciesAsync(
-           int propertyId, CancellationToken ct = default)
+        public async Task<IReadOnlyList<CancellationPolicy>>
+     GetCancellationPoliciesAsync(
+         int propertyId,
+         DateTimeOffset? validFrom = null,
+          CancellationToken cancellationToken = default)
         {
-            return await _context.CancellationPolicies
-         .AsNoTracking()
-         .Where(x => x.PropertyId == propertyId)
-         .Include(x => x.Versions)
-         .OrderByDescending(x => x.CurrentVersion)
-         .ThenBy(x => x.Name)
-         .ToListAsync(ct);
+            var baseQuery = _context.CancellationPolicies
+                .AsNoTracking()
+                .Where(policy =>
+                    policy.PropertyId == propertyId);
+
+            /*
+             * لو لم يتم إرسال أي تاريخ:
+             * نرجع كل السياسات وكل الإصدارات.
+             */
+            if (!validFrom.HasValue )
+            {
+                return await baseQuery
+                    .Include(policy => policy.Versions)
+                    .OrderByDescending(policy => policy.CurrentVersion)
+                    .ThenBy(policy => policy.Name)
+                    .ToListAsync(cancellationToken);
+            }
+
+            /*
+             * validFrom هو تاريخ بداية الإقامة.
+             *
+             * إذا كان موجودًا، فهو الأساس في اختيار الإصدار.
+             * validTo لا يغير الاختيار؛ لأن Checkout قد يمتد
+             * بعد انتهاء صلاحية Version.
+             *
+             * إذا لم يوجد validFrom، نستخدم validTo كتاريخ بحث.
+             */
+            //10--------------12-----------15--------------16------------------17
+            var effectiveDate =
+                (validFrom).Value.Date;
+
+            var policies = await baseQuery
+                .Where(policy =>
+                    policy.Status == PolicyStatus.Active &&
+                    policy.Versions.Any(version =>
+                        version.Version == policy.CurrentVersion &&
+                        
+                        version.ValidFrom.Date <= effectiveDate &&
+                        (
+                            version.ValidTo == null ||
+                            version.ValidTo.Value.Date >= effectiveDate
+                        )))
+                .Include(policy =>
+                    policy.Versions.Where(version =>
+                        version.Version == policy.CurrentVersion &&
+                        //version.IsActive &&
+                        version.ValidFrom.Date <= effectiveDate &&
+                        (
+                            version.ValidTo == null ||
+                            version.ValidTo.Value.Date >= effectiveDate
+                        )))
+                .OrderBy(policy => policy.Name)
+                .ToListAsync(cancellationToken);
+
+            return policies;
         }
+
+
+
         public async Task<bool> CancellationVersionOverlapsAsync(
     int cancellationPolicyId,
     DateTimeOffset validFrom,

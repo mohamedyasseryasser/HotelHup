@@ -828,10 +828,10 @@ public sealed class ReservationService : IReservationService
         {
             if (!auth.Success) return Fail<ReservationActionResponse>(auth.Message, auth.StatusCode);
         }
-        if (!request.IdentityVerified)
-        {
-            return Fail<ReservationActionResponse>("Identity verification is required.", "IDENTITY_VERIFICATION_REQUIRED", 422);
-        }
+       // if (!request.IdentityVerified)
+       // {
+           // return Fail<ReservationActionResponse>("Identity verification is required.", "IDENTITY_VERIFICATION_REQUIRED", 422);
+        //}
         var reservation = await _repository.GetByIdAsync(propertyId, id, true, ct);
         if (reservation is null)
         {
@@ -882,13 +882,13 @@ public sealed class ReservationService : IReservationService
         foreach (var assignment in assignments)
         {
             var room = await _repository.GetRoomAsync(propertyId, assignment.RoomId, true, ct);
-            if (room is null)
+            if (room is null) 
             {
-                return Fail<ReservationActionResponse>("Room was not found.", "ROOM_NOT_FOUND", 404);
+                return Fail<ReservationActionResponse>($"Room{assignment.RoomId} was not found.", "ROOM_NOT_FOUND", 404);
             }
             if (room.Status is not (RoomStatus.Available or RoomStatus.Inspected))
             {
-                return Fail<ReservationActionResponse>("One or more rooms are not ready for check-in.", "ROOM_NOT_READY", 409);
+                return Fail<ReservationActionResponse>($"{room.RoomNumber }  is current state :{room.Status} are not ready for check-in.", "ROOM_NOT_READY", 409);
             }
             room.Status = RoomStatus.Occupied; rooms.Add(room);
         }
@@ -1761,12 +1761,161 @@ public sealed class ReservationService : IReservationService
                     "Stay extended."));
     }
 
-    public async Task<ResponseStatus<IReadOnlyList<ReservationStatusHistoryResponse>>> 
-        GetStatusHistoryAsync(User actor, int propertyId, int id, CancellationToken ct = default)
+    public async Task<
+      ResponseStatus<ReservationHistoryResponse>>
+      GetStatusHistoryAsync(
+          User actor,
+          int propertyId,
+          int id,
+          CancellationToken ct = default)
     {
-        var reservation = await _repository.GetByIdAsync(propertyId, id, false, ct); if (reservation is null) return Fail<IReadOnlyList<ReservationStatusHistoryResponse>>("Reservation was not found.", "RESERVATION_NOT_FOUND", 404);
-        return Ok<IReadOnlyList<ReservationStatusHistoryResponse>>(reservation.StatusHistory.OrderBy(x => x.ChangedAt).Select(x => new ReservationStatusHistoryResponse { Id = x.Id, FromStatus = x.FromStatus, ToStatus = x.ToStatus, Reason = x.Reason, ActorId = x.ActorId, ChangedAt = x.ChangedAt }).ToList());
+        var authorization =
+            await AuthorizeAsync(
+                actor,
+                propertyId,
+                ct);
+       
+        if (!authorization.Success)
+        {
+            return Fail<ReservationHistoryResponse>(
+                authorization.Message,
+                "FORBIDDEN",
+                authorization.StatusCode);
+        }
+       
+        var reservation =
+            await _repository.GetByIdAsync(
+                propertyId,
+                id,
+                false,
+                ct);
+
+        if (reservation is null)
+        {
+            return Fail<ReservationHistoryResponse>(
+                "Reservation was not found.",
+                "RESERVATION_NOT_FOUND",
+                404);
+        }
+
+        var retrievedAt = DateTimeOffset.UtcNow;
+
+        var statusHistory =
+            reservation.StatusHistory
+                .OrderBy(x => x.ChangedAt)
+                .Select(x =>
+                    new ReservationStatusHistoryResponse
+                    {
+                        Id = x.Id,
+                        FromStatus = x.FromStatus,
+                        ToStatus = x.ToStatus,
+                        Reason = x.Reason,
+                        ActorId = x.ActorId,
+                        ChangedAt = x.ChangedAt
+                    })
+                .ToList();
+
+        var cancellationSnapshot =
+            reservation.CancellationPolicySnapshot;
+
+        CancellationPolicySnapshotResponse?
+            cancellationPolicy = null;
+
+        if (cancellationSnapshot is not null)
+        {
+            cancellationPolicy =
+                new CancellationPolicySnapshotResponse
+                {
+                    Id = cancellationSnapshot.Id,
+                    PolicyName =
+                        cancellationSnapshot.PolicyName,
+                    Rules =
+                        cancellationSnapshot.Rules,
+                    FreeCancellationHours =
+                        cancellationSnapshot.FreeCancellationHours,
+                    CancellationFeePercentage =
+                        cancellationSnapshot.CancellationFeePercentage,
+                    FixedCancellationFee =
+                        cancellationSnapshot.FixedCancellationFee,
+                    IsNonRefundable =
+                        cancellationSnapshot.IsNonRefundable,
+                    CutoffHours =
+                        cancellationSnapshot.CutoffHours,
+                    CapturedAt =
+                        cancellationSnapshot.CapturedAt
+                };
+        }
+
+        var depositSnapshot =
+            reservation.DepositPolicySnapshot;
+
+        DepositPolicySnapshotResponse?
+            depositPolicy = null;
+
+        if (depositSnapshot is not null)
+        {
+            depositPolicy =
+                new DepositPolicySnapshotResponse
+                {
+                    Id = depositSnapshot.Id,
+                    PolicyName =
+                        depositSnapshot.PolicyName,
+                    Type = depositSnapshot.Type,
+                    Amount = depositSnapshot.Amount,
+                    Percentage = depositSnapshot.Percentage,
+                    RequiredDepositAmount =
+                        depositSnapshot.RequiredDepositAmount,
+                    CapturedAt =
+                        depositSnapshot.CapturedAt
+                };
+        }
+
+        var taxSnapshots =
+            reservation.ReservationTaxSnapshots
+                .OrderBy(x => x.TaxValidFrom)
+                .ThenBy(x => x.Id)
+                .Select(x =>
+                    new TaxSnapshotResponse
+                    {
+                        Id = x.Id,
+                        TaxCode = x.TaxCode,
+                        TaxName = x.TaxName,
+                        Rate = x.Rate,
+                        Type = (int)x.Type,
+                        IsInclusive = x.IsInclusive,
+                        TaxableAmount = x.TaxableAmount,
+                        TaxAmount = x.TaxAmount,
+                        TaxValidFrom = x.TaxValidFrom,
+                        TaxValidTo = x.TaxValidTo
+                    })
+                .ToList();
+
+        var snapshots =
+            new ReservationSnapshotsResponse
+            {
+                ReservationId = reservation.Id,
+                PropertyId = reservation.PropertyId,
+                CancellationPolicy = cancellationPolicy,
+                DepositPolicy = depositPolicy,
+                Taxes = taxSnapshots,
+                RetrievedAt = retrievedAt
+            };
+
+        var result =
+            new ReservationHistoryResponse
+            {
+                ReservationId = reservation.Id,
+                PropertyId = reservation.PropertyId,
+                StatusHistory = statusHistory,
+                Snapshots = snapshots,
+                RetrievedAt = retrievedAt
+            };
+
+        return Ok(
+            result,
+            "Reservation status history and snapshots retrieved successfully.");
     }
+
     //-----------------------------------------------------------------------------------
     //private methods
     //------------------------------------------------------------------------------------

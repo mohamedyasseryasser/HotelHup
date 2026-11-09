@@ -17,14 +17,14 @@ namespace HotelHup.APPLICATION.services.implementation
 {
     public sealed class PaymentService : IPaymentService
     {
-         private readonly IPaymentRepository _repository;
+        private readonly IPaymentRepository _repository;
         private readonly IUserRepository _users;
 
         public PaymentService(
             IPaymentRepository repository,
             IUserRepository users)
         {
-             _repository = repository;
+            _repository = repository;
             _users = users;
         }
 
@@ -135,7 +135,7 @@ namespace HotelHup.APPLICATION.services.implementation
                             404);
                     }
                     //must reservation state is not cencel or noshow
-                    if (folio.Reservation.Status is ReservationStatus.Cancelled || folio.Reservation.Status is  ReservationStatus.NoShow)
+                    if (folio.Reservation.Status is ReservationStatus.Cancelled || folio.Reservation.Status is ReservationStatus.NoShow)
                     {
                         return Fail<PaymentResponseDto>(
                            "reservation is cancel or noshow.",
@@ -165,7 +165,7 @@ namespace HotelHup.APPLICATION.services.implementation
                             "FOLIO_CLOSED",
                             409);
                     }
-                    
+
                     Recalculate(folio);
 
                     var amount = Money(request.Amount);
@@ -218,14 +218,15 @@ namespace HotelHup.APPLICATION.services.implementation
                     await _repository.SaveChangesAsync(ct);
 
                     await _repository.AddAuditAsync(
-                        Audit(
-                            actor,
-                            folio,
-                            payment,
-                            "Payment.Created",
-                            null,
-                            payment),
-                        ct);
+        Audit(
+            actor,
+            folio,
+            nameof(Payment),
+            payment.Id.ToString(),
+            "Payment.Created",
+            null,
+            PaymentSnapshot(payment)),
+        ct);
 
                     await _repository.SaveChangesAsync(ct);
 
@@ -400,7 +401,9 @@ namespace HotelHup.APPLICATION.services.implementation
             // and a non-empty reason.
             if (request is null ||
                 request.Amount <= 0 ||
-                string.IsNullOrWhiteSpace(request.Reason))
+                string.IsNullOrWhiteSpace(request.Reason) ||
+                request.Reason.Trim().Length < 3 ||
+                request.Reason.Trim().Length > 500)
             {
                 return Fail<PaymentResponseDto>(
                     "Refund amount and reason are required.",
@@ -523,6 +526,8 @@ namespace HotelHup.APPLICATION.services.implementation
                         CreatedBy = actor.Id
                     };
 
+                    var oldPayment = PaymentSnapshot(payment);
+
                     payment.Refunds.Add(refund);
 
                     // Business Rule: A payment is fully refunded when
@@ -534,16 +539,20 @@ namespace HotelHup.APPLICATION.services.implementation
 
                     Recalculate(payment.Folio);
 
+                    var newPayment = PaymentSnapshot(payment);
+
                     await _repository.SaveChangesAsync(ct);
 
                     await _repository.AddAuditAsync(
                         Audit(
                             actor,
                             payment.Folio,
-                            payment,
+                            nameof(Payment),
+                            payment.Id.ToString(),
                             "Payment.Refunded",
-                            null,
-                            refund),
+                            oldPayment,
+                            newPayment,
+                            request.Reason.Trim()),
                         ct);
 
                     await _repository.SaveChangesAsync(ct);
@@ -697,45 +706,53 @@ namespace HotelHup.APPLICATION.services.implementation
 
             // Business Rule: The folio balance cannot be negative.
             folio.Balance =
-                Math.Max(
+                Money(Math.Max(
                     0m,
-                    difference);
+                    difference));
 
             // Business Rule: Any amount paid above the folio total
             // is recorded as credit balance.
             folio.CreditBalance =
-                Math.Max(
+                Money(Math.Max(
                     0m,
-                    -difference);
+                    -difference));
         }
 
         private static AuditLog Audit(
-            User actor,
-            Folio folio,
-            Payment payment,
-            string action,
-            object? oldValues,
-            object? newValues)
+     User actor,
+     Folio folio,
+     string entityName,
+     string entityId,
+     string action,
+     object? oldValues,
+     object? newValues,
+     string? reason = null)
         {
             return new AuditLog
             {
                 UserId = actor.Id,
                 PropertyId = folio.Reservation.PropertyId,
-                EntityName = nameof(Payment),
-                EntityId = payment.Id.ToString(),
+                EntityName = entityName,
+                EntityId = entityId,
                 Action = action,
+
                 OldValues =
                     oldValues is null
                         ? null
                         : JsonSerializer.Serialize(oldValues),
+
                 NewValues =
                     newValues is null
                         ? null
                         : JsonSerializer.Serialize(newValues),
+
+                Reason = reason,
                 CreatedAt = DateTimeOffset.UtcNow,
                 CreatedBy = actor.Id
             };
         }
+
+
 
         private static PaymentResponseDto Map(Payment x)
         {
@@ -791,6 +808,43 @@ namespace HotelHup.APPLICATION.services.implementation
                 data,
                 message,
                 status);
+        }
+        private static object PaymentSnapshot(
+    Payment payment)
+        {
+            return new
+            {
+                payment.Id,
+                payment.FolioId,
+                payment.Amount,
+                Method = payment.Method.ToString(),
+                Status = payment.Status.ToString(),
+                payment.ExternalId,
+                payment.IdempotencyKey,
+                payment.PaidAt,
+                RefundedAmount =
+                    Money(
+                        payment.Refunds
+                            .Where(x =>
+                                x.Status ==
+                                RefundStatus.Completed)
+                            .Sum(x => x.Amount))
+            };
+        }
+        private static object RefundSnapshot(
+    Refund refund)
+        {
+            return new
+            {
+                Id = refund.id,
+                refund.PaymentId,
+                refund.FolioId,
+                refund.Amount,
+                Status = refund.Status.ToString(),
+                refund.Reason,
+                refund.ExternalId,
+                Method = refund.Method.ToString()
+            };
         }
 
         private static ResponseStatus<T> Fail<T>(

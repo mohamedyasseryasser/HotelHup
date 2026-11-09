@@ -11,7 +11,8 @@ namespace HotelHup.APPLICATION.services.interfaces
 {
     public interface ICancellationPolicyService
     {
-        Task<ResponseStatus<IReadOnlyList<CancellationPolicyResponse>>> GetCancellationPoliciesAsync(User actor, int propertyId, CancellationToken ct = default);
+        Task<ResponseStatus<IReadOnlyList<CancellationPolicyResponse>>> 
+            GetCancellationPoliciesAsync(DateTimeOffset? validatefrom,User actor, int propertyId, CancellationToken ct = default);
         Task<ResponseStatus<CancellationPolicyResponse>> GetCancellationPolicyAsync(User actor, int propertyId, int id, CancellationToken ct = default);
         Task<ResponseStatus<CancellationPolicyResponse>> CreateCancellationPolicyAsync(User actor, int propertyId, CreateCancellationPolicyRequest request, CancellationToken ct = default);
         Task<ResponseStatus<CancellationPolicyResponse>>

@@ -57,7 +57,7 @@ public sealed class ReservationRepository : IReservationRepository
     {
         var query = _context.cancellationPolicyVersions.AsNoTracking().Include(x => x.CancellationPolicy)
             .Where(x => x.CancellationPolicy != null && x.CancellationPolicy.PropertyId == propertyId &&
-                        x.CancellationPolicyId == policyId && x.ValidFrom <= stayDate && (x.ValidTo == null || x.ValidTo > stayDate));
+                        x.CancellationPolicyId == policyId && x.ValidFrom <= stayDate && (x.ValidTo == null || x.ValidTo >= stayDate));
         if (versionId.HasValue) query = query.Where(x => x.Id == versionId.Value);
         return query.OrderByDescending(x => x.Version).FirstOrDefaultAsync(ct);
     }
@@ -69,7 +69,7 @@ public sealed class ReservationRepository : IReservationRepository
     {
         var query = _context.depositPolicyVersions.AsNoTracking().Include(x => x.Deposit)
             .Where(x => x.Deposit != null && x.Deposit.PropertyId == propertyId && x.DepositId == policyId && x.IsActive &&
-                        x.ValidFrom <= stayDate && (x.ValidTo == null || x.ValidTo > stayDate));
+                        x.ValidFrom <= stayDate && (x.ValidTo == null || x.ValidTo >= stayDate));
         if (versionId.HasValue) query = query.Where(x => x.Id == versionId.Value);
         return query.OrderByDescending(x => x.Version).FirstOrDefaultAsync(ct);
     }
@@ -84,7 +84,7 @@ public sealed class ReservationRepository : IReservationRepository
             x => x.PropertyId == propertyId &&
             x.IsActive &&
             x.ValidFrom <= stayDate &&
-            (x.ValidTo == null || x.ValidTo > stayDate)).
+            (x.ValidTo == null || x.ValidTo >= stayDate)).
         OrderBy(x => x.Id).
         ToListAsync(ct);
 

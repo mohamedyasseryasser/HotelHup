@@ -10,7 +10,11 @@ namespace HotelHup.APPLICATION.interfacesrepo
 {
     public interface IPropertyDepositRepo
     {
-        Task<IReadOnlyList<DepositPolicy>> GetDepositPoliciesAsync(int propertyId, CancellationToken cancellationToken = default);
+        Task<IReadOnlyList<DepositPolicy>>
+            GetDepositPoliciesAsync(
+                int propertyId,
+                DateTimeOffset? validFrom = null,
+                CancellationToken cancellationToken = default);
         Task<DepositPolicy?> GetDepositPolicyAsync(int propertyId, int policyId, CancellationToken cancellationToken = default);
         Task<DepositPolicy?> GetTrackedDepositPolicyAsync(int propertyId, int policyId, CancellationToken cancellationToken = default);
         Task<int> GetNextDepositVersionAsync(int propertyId, int? policyId = null, CancellationToken cancellationToken = default);

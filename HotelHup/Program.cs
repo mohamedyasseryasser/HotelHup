@@ -155,13 +155,21 @@ public class Program
         builder.Services.AddScoped<IReportService, ReportService>();
         builder.Services.AddScoped<ISystemActorProvider, SystemActorProvider>();
         builder.Services.AddCors(options =>
-            options.AddPolicy(
-                "AngularPolicy",
-                policy =>
-                    policy
-                        .WithOrigins("http://localhost:4200")
-                        .AllowAnyHeader()
-                        .AllowAnyMethod()));
+        {
+            options.AddPolicy("AngularPolicy", policy =>
+            {
+                policy
+                    .WithOrigins(
+                        "http://localhost:4200",
+                        "https://hotelhupfront.vercel.app",
+                        "https://hotelhupfront-git-main-1772004.vercel.app",
+                        "https://hotelhupfront-hat5sjzvb-1772004.vercel.app",
+                        "https://hotelhupfront-8ylp9p8j9-1772004.vercel.app"
+                    )
+                    .AllowAnyHeader()
+                    .AllowAnyMethod();
+            });
+        });
 
         builder.Services.AddControllers();
         builder.Services.AddEndpointsApiExplorer();
