@@ -220,7 +220,7 @@ namespace HotelHup.APPLICATION.services.implementation
             return Success(
                 await MapAsync(user, cancellationToken),
                 "User retrieved successfully.");
-        }
+        }               
 
 
         public async Task<ResponseStatus<ResponseUserDto>> CreateAsync(
@@ -409,7 +409,7 @@ namespace HotelHup.APPLICATION.services.implementation
         }
 
         public async Task<ResponseStatus<ResponseUserDto>> UpdateAsync(
-            User actor, string userId,
+            User actor, string userId,         
             UpdateUserRequestDto request,
             CancellationToken cancellationToken = default)
         {

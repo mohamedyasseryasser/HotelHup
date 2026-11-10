@@ -140,8 +140,17 @@ public static class DatabaseSeeder
                 Permissions.Properties.Read, Permissions.Properties.Update,
                 Permissions.Users.Read
             ],
-            [UserRole.Receptionist.ToString()] =
-            [   
+            [UserRole.Receptionist.ToString()] =       
+            [   Permissions.Folios.Read, Permissions.Folios.Create, Permissions.Folios.Update,
+                Permissions.Folios.AddCharge, Permissions.Folios.Transfer, Permissions.Folios.Close,
+                Permissions.Folios.Reopen,
+                Permissions.Payments.Read, Permissions.Payments.Create, Permissions.Payments.Void,
+                Permissions.Refunds.Read, Permissions.Refunds.Create, Permissions.Refunds.Approve,
+                Permissions.Expenses.Read, Permissions.Expenses.Create, Permissions.Expenses.Update,
+                Permissions.Expenses.Void,
+                Permissions.Reports.Read, Permissions.Reports.Export,
+
+
                 Permissions.Users.Read,
                 Permissions.Guests.Read, Permissions.Guests.Create, Permissions.Guests.Update,
                 Permissions.Reservations.Read, Permissions.Reservations.Create, Permissions.Reservations.Update,

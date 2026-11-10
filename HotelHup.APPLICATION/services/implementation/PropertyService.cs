@@ -1165,45 +1165,7 @@ namespace HotelHup.APPLICATION.services.implementation
 
             return errors;
         }
-        private static List<string> ValidateCreateProperty(
-    CreatePropertyRequest request)
-        {
-            var errors = new List<string>();
-
-            if (string.IsNullOrWhiteSpace(request.Name))
-            {
-                errors.Add("Name is required.");
-            }
-
-           
-
-            if (string.IsNullOrWhiteSpace(request.Code))
-            {
-                errors.Add("Code is required.");
-            }
-
-            if (!IsValidIsoCurrency(
-                    request.Settings.Currency))
-            {
-                errors.Add(
-                    "Currency must be a valid ISO 4217 three-letter code.");
-            }
-
-            if (!ValidZone(
-                    request.Settings.TimeZone))
-            {
-                errors.Add(
-                    "TimeZone must be a valid IANA time zone.");
-            }
-
-            errors.AddRange(
-                ValidatePropertyTimes(
-                    request.Settings.CheckInTime,
-                    request.Settings.CheckOutTime));
-
-            return errors;
-        }
-
+      
         private static bool CheckRowVersion(
       string expectedRowVersion,
       byte[] actualRowVersion)
@@ -1337,47 +1299,7 @@ namespace HotelHup.APPLICATION.services.implementation
             return new List<string>();
         }
 
-        private   async Task<List<string>> ValidatePolicy(
-            DateTimeOffset from,
-            DateTimeOffset? to,
-            decimal fee,
-            int free,
-            int cutoff,
-            string rules,string name,int propertyid,CancellationToken ct)
-        {
-            var errors =
-                ValidateDates(from, to);
-
-            if (fee is < 0 or > 100)
-            {
-                errors.Add(
-                    "Cancellation fee percentage must be between 0 and 100.");
-            }
-
-            if (free < 0 || cutoff < 0)
-            {
-                errors.Add(
-                    "Policy hours cannot be negative.");
-            }
-            if (to<=from) 
-            {
-                errors.Add("validfrom must be less than validto");
-            }
-            try
-            {
-                JsonDocument.Parse(
-                    string.IsNullOrWhiteSpace(rules)
-                        ? "{}"
-                        : rules);
-            }
-            catch
-            {
-                errors.Add(
-                    "Rules must be valid JSON.");
-            }
-
-            return errors;
-        }
+        
         private async Task<ResponseStatus<Property>> AuthorizePropertyAccessAsync(
             string actorId,
             int propertyId,

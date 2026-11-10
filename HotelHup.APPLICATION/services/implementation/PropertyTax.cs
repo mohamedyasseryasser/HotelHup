@@ -884,14 +884,7 @@ namespace HotelHup.APPLICATION.services.implementation
                 errors: errors,
                 statusCode: statusCode);
         }
-        private static ResponseStatus<T> Fail<T>(
-         ResponseStatus<bool> response)
-        {
-            return new ResponseStatus<T>(
-                response.Message,
-                errors: response.Errors,
-                statusCode: response.StatusCode);
-        }
+      
         private static bool CheckRowVersion(
       string expectedRowVersion,
       byte[] actualRowVersion)
@@ -983,23 +976,10 @@ namespace HotelHup.APPLICATION.services.implementation
                     statusCode: 200);
             }
 
-            // Check Manager
-            var isManager = data.Roles.Any(role =>
-                role.IsActive &&
-                string.Equals(
-                    role.Name,
-                    nameof(UserRole.Manager),
-                    StringComparison.OrdinalIgnoreCase));
+           
+ 
 
-            if (!isManager)
-            {
-                return new ResponseStatus<bool>(
-                    message: "Admin or Manager access required.",
-                    statusCode: 403);
-            }
-
-            // Manager must belong to a property
-            if (!data.Actor.PropertyId.HasValue)
+             if (!data.Actor.PropertyId.HasValue)
             {
                 return new ResponseStatus<bool>(
                     message: "Manager is not assigned to a property.",

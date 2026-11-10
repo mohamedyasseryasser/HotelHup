@@ -347,16 +347,14 @@ namespace HotelHup.APPLICATION.services.implementation
             {
                 return new ResponseStatus<bool>( message:"Property was not found.",statusCode: 404);
             }
-            // Manager must belong to a property
-            if (!data.Actor.PropertyId.HasValue)
+             if (!data.Actor.PropertyId.HasValue)
             {
                 return new ResponseStatus<bool>(
                     message: "Manager is not assigned to a property.",
                     statusCode: 403);
             }
 
-            // Manager can access only his property
-            if (!propertyId.HasValue ||
+             if (!propertyId.HasValue ||
                 data.Actor.PropertyId.Value != propertyId.Value)
             {
                 return new ResponseStatus<bool>(

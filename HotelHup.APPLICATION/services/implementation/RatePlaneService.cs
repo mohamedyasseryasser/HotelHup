@@ -643,32 +643,15 @@ namespace HotelHup.APPLICATION.services.implementation
                     (data: true,
                     statusCode: 200);
             }
-
-            // Check Manager
-            var isManager = data.Roles.Any(role =>
-                role.IsActive &&
-                string.Equals(
-                    role.Name,
-                    nameof(UserRole.Manager),
-                    StringComparison.OrdinalIgnoreCase));
-
-            if (!isManager)
-            {
-                return new ResponseStatus<bool>(
-                    message: "Admin or Manager access required.",
-                    statusCode: 403);
-            }
-
-            // Manager must belong to a property
-            if (!data.Actor.PropertyId.HasValue)
+ 
+             if (!data.Actor.PropertyId.HasValue)
             {
                 return new ResponseStatus<bool>(
                     message: "Manager is not assigned to a property.",
                     statusCode: 403);
             }
 
-            // Manager can access only his property
-            if (!propertyId.HasValue ||
+             if (!propertyId.HasValue ||
                 data.Actor.PropertyId.Value != propertyId.Value)
             {
                 return new ResponseStatus<bool>(
