@@ -16,20 +16,26 @@ namespace HotelHup.INFRASTRUCTURE.repos
         private readonly hotelhupContext _context;
         public FolioRepository(hotelhupContext context) => _context = context;
 
-        public async Task<Folio?> GetByIdAsync(int id, bool tracking, CancellationToken ct = default)
+        public async Task<Folio?> GetByIdAsync(
+      int id,
+      bool tracking,
+      CancellationToken ct = default)
         {
             IQueryable<Folio> query = _context.Folios
                 .Include(x => x.Reservation)
-                .Include(x => x.Items.OrderByDescending(i => i.PostedAt))
-                .Include(x => x.Payments).ThenInclude(x => x.Refunds)
+                .ThenInclude(x => x.Property)
+                .Include(x => x.Items)
+                .Include(x => x.Payments)
+                .ThenInclude(x => x.Refunds)
                 .Where(x => x.id == id);
-            if (!tracking)
-            {
-                query = query.AsNoTracking();
-            }
 
-            return await query.SingleOrDefaultAsync(ct);
+            return await (
+                tracking
+                    ? query
+                    : query.AsNoTracking()
+            ).SingleOrDefaultAsync(ct);
         }
+
         public Task<Service?> GetServiceAsync(
     int serviceId,
     int propertyId,

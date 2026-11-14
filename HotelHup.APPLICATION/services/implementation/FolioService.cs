@@ -17,7 +17,7 @@ public sealed class FolioService : IFolioService
     private readonly IUserRepository _users;
 
     public FolioService(IFolioRepository repository, IUserRepository users)
-    {                                                                         
+    {
         _repository = repository;
         _users = users;
     }
@@ -28,10 +28,12 @@ public sealed class FolioService : IFolioService
         var folio = await _repository.GetByIdAsync(folioId, false, ct);
         if (folio is null) return Fail<FolioResponseDto>("Folio was not found.", "FOLIO_NOT_FOUND", 404);
         var access = await AuthorizeAsync(actor, folio, Permissions.Folios.Read, ct);
-        return !access.Success ? Fail<FolioResponseDto>(access.Message, access.Code, access.StatusCode) : Ok(Map(folio));
+        if (!access.Success) return Fail<FolioResponseDto>(access.Message, access.Code, access.StatusCode);
+        Recalculate(folio);
+        return Ok(Map(folio));
     }
 
-    public async Task<ResponseStatus<FolioResponseDto>> 
+    public async Task<ResponseStatus<FolioResponseDto>>
         AddItemAsync(User actor,
         int folioId,
         AddFolioItemRequestDto request,
@@ -44,7 +46,8 @@ public sealed class FolioService : IFolioService
                 var folio = await _repository.GetForUpdateAsync(folioId, ct);
                 {
                     if (folio is null) return Fail<FolioResponseDto>("Folio was not found.", "FOLIO_NOT_FOUND", 404);
-                }   var access = await AuthorizeAsync(actor, folio, Permissions.Folios.AddCharge, ct);
+                }
+                var access = await AuthorizeAsync(actor, folio, Permissions.Folios.AddCharge, ct);
                 if (!access.Success)
                 {
                     return Fail<FolioResponseDto>(access.Message, access.Code, access.StatusCode);
@@ -54,7 +57,7 @@ public sealed class FolioService : IFolioService
                     return Fail<FolioResponseDto>("Closed folio cannot accept new items.", "FOLIO_CLOSED", 409);
                 }
                 if (!Enum.IsDefined(request.Type) || !Enum.IsDefined(request.Source) || request.Amount <= 0 || request.Tax < 0)
-                { 
+                {
                     return Fail<FolioResponseDto>("Amount, tax, type and source are invalid.", "INVALID_FOLIO_AMOUNT", 422);
                 }
                 if (request.Type is FolioItemType.Payment or FolioItemType.Refund)
@@ -68,7 +71,8 @@ public sealed class FolioService : IFolioService
                 if (request.Type != FolioItemType.Service && request.ServiceId.HasValue)
                 {
                     return Fail<FolioResponseDto>("ServiceId is only valid for service folio items.", "SERVICE_ID_NOT_ALLOWED", 422);
-                } if (!string.IsNullOrWhiteSpace(request.IdempotencyKey) && await _repository.IdempotencyKeyExistsAsync(folioId, request.IdempotencyKey, ct))
+                }
+                if (!string.IsNullOrWhiteSpace(request.IdempotencyKey) && await _repository.IdempotencyKeyExistsAsync(folioId, request.IdempotencyKey, ct))
                 {
                     return Fail<FolioResponseDto>("The idempotency key has already been used.", "IDEMPOTENCY_CONFLICT", 409);
                 }
@@ -285,24 +289,24 @@ public sealed class FolioService : IFolioService
         int folioId,
         ReopenFolioRequestDto request,
         CancellationToken ct = default) =>
-        ChangeStatusAsync(actor, 
-            folioId, 
-            FolioStatus.Open, 
+        ChangeStatusAsync(actor,
+            folioId,
+            FolioStatus.Open,
             request.Reason,
-            request.ExpectedRowVersion, 
+            request.ExpectedRowVersion,
             "Folio.Reopened",
             ct);
 
     public Task<ResponseStatus<FolioResponseDto>>
         CloseAsync(
-        User actor, 
+        User actor,
         int folioId,
         CloseFolioRequestDto request,
         CancellationToken ct = default) =>
         ChangeStatusAsync(actor, folioId, FolioStatus.Closed, request.Reason, request.ExpectedRowVersion, "Folio.Closed", ct);
 
- 
-    public async Task<ResponseStatus<FolioItemPageDto>> 
+
+    public async Task<ResponseStatus<FolioItemPageDto>>
         GetItemsAsync(User actor, int folioId, FolioItemPageRequest request, CancellationToken ct = default)
     {
         var folio = await _repository.GetByIdAsync(folioId, false, ct);
@@ -313,20 +317,21 @@ public sealed class FolioService : IFolioService
         return Ok(new FolioItemPageDto { Items = items.Select(Map).ToList(), PageNumber = request.PageNumber, PageSize = request.PageSize, TotalCount = total });
     }
 
-    public async Task<ResponseStatus<FolioSummaryDto>> 
+    public async Task<ResponseStatus<FolioSummaryDto>>
         GetSummaryAsync(User actor, int folioId, CancellationToken ct = default)
     {
         var folio = await _repository.GetByIdAsync(folioId, false, ct);
         if (folio is null) return Fail<FolioSummaryDto>("Folio was not found.", "FOLIO_NOT_FOUND", 404);
         var access = await AuthorizeAsync(actor, folio, Permissions.Folios.Read, ct);
         if (!access.Success) return Fail<FolioSummaryDto>(access.Message, access.Code, access.StatusCode);
+        Recalculate(folio);
         return Ok(Summary(folio));
     }
 
-   //------------------------------------------------------------------------------------------------
-   //private methods
-   //------------------------------------------------------------------------------------------------
-    private async Task<ResponseStatus<bool>> 
+    //------------------------------------------------------------------------------------------------
+    //private methods
+    //------------------------------------------------------------------------------------------------
+    private async Task<ResponseStatus<bool>>
         AuthorizeAsync(
         User actor,
         Folio folio,
@@ -395,15 +400,15 @@ public sealed class FolioService : IFolioService
                     0m,
                     charges + taxes - discounts));
 
-        var paid =
-            folio.Payments
-                .Where(x =>
-                    x.Status is
-                        PaymentStatus.Paid
-                        or PaymentStatus.PartiallyPaid
-                        or PaymentStatus.PartiallyRefunded
-                        or PaymentStatus.Refunded)
-                .Sum(x => x.Amount);
+        var paid = folio.Payments
+      .Where(x =>
+          x.Status is
+              PaymentStatus.Paid
+              or PaymentStatus.PartiallyPaid
+              or PaymentStatus.PartiallyRefunded
+              or PaymentStatus.Refunded)
+      .Sum(x => x.Amount);
+
 
         var refunded =
             folio.Payments
@@ -430,7 +435,33 @@ public sealed class FolioService : IFolioService
     private static FolioSummaryDto Summary(Folio x)
     {
         var active = x.Items.Where(i => i.Status == FolioItemStatus.Posted).ToList();
-        return new FolioSummaryDto { GrossTotal = x.Total, TotalCharges = Money(active.Where(i => i.Type != FolioItemType.Discount).Sum(i => i.Amount)), Discounts = Money(active.Where(i => i.Type == FolioItemType.Discount).Sum(i => i.Amount)), Taxes = Money(active.Sum(i => i.Tax)), Fees = Money(active.Where(i => i.Type == FolioItemType.Fee).Sum(i => i.Amount)), Payments = Money(x.Payments.Where(p => p.Status is PaymentStatus.Paid or PaymentStatus.PartiallyPaid).Sum(p => p.Amount)), Refunds = Money(x.Payments.SelectMany(p => p.Refunds).Where(r => r.Status == RefundStatus.Completed).Sum(r => r.Amount)), Balance = x.Balance };
+        var chargeTypes = active
+            .Where(i => i.Type is
+                FolioItemType.RoomCharge or
+                FolioItemType.Service or
+                FolioItemType.Fee or
+                FolioItemType.Adjustment);
+
+        return new FolioSummaryDto
+        {
+            GrossTotal = x.Total,
+            TotalCharges = Money(chargeTypes.Sum(i => i.Amount)),
+            Discounts = Money(active
+                .Where(i => i.Type == FolioItemType.Discount)
+                .Sum(i => i.Amount)),
+            Taxes = Money(active.Sum(i => i.Tax)),
+            Fees = Money(active
+                .Where(i => i.Type == FolioItemType.Fee)
+                .Sum(i => i.Amount)),
+            Payments = Money(x.Payments
+                .Where(p => p.Status is PaymentStatus.Paid or PaymentStatus.PartiallyPaid or PaymentStatus.Refunded or PaymentStatus.PartiallyRefunded)
+                .Sum(p => p.Amount)),
+            Refunds = Money(x.Payments
+                .SelectMany(p => p.Refunds)
+                .Where(r => r.Status == RefundStatus.Completed)
+                .Sum(r => r.Amount)),
+            Balance = x.Balance
+        };
     }
     private async Task<ResponseStatus<FolioResponseDto>>
       ChangeStatusAsync(
@@ -560,6 +591,18 @@ public sealed class FolioService : IFolioService
 
                     var now =
                         DateTimeOffset.UtcNow;
+                    if (status == FolioStatus.Closed)
+                    {
+                        Recalculate(folio);
+
+                        if (folio.Balance > 0m)
+                        {
+                            return Fail<FolioResponseDto>(
+                                "The folio balance must be settled before closing.",
+                                "FOLIO_BALANCE_NOT_SETTLED",
+                                409);
+                        }
+                    }
 
                     folio.Status = status;
                     folio.UpdatedAt = now;
@@ -610,69 +653,71 @@ public sealed class FolioService : IFolioService
         }
     }
 
-    private static FolioResponseDto Map(Folio x) 
-        => 
+    private static FolioResponseDto Map(Folio x)
+        =>
         new()
         {
             Id = x.id,
-            ReservationId = x.ReservationId, 
-            Status = x.Status, 
+            ReservationId = x.ReservationId,
+            Status = x.Status,
             Currency = x.Currency,
             Total = x.Total,
             Balance = x.Balance,
             CreditBalance = x.CreditBalance,
-            CreatedAt = x.CreatedAt, 
+            CreatedAt = x.CreatedAt,
             UpdatedAt = x.UpdatedAt,
             RowVersion = Convert.ToBase64String(x.RowVersion ?? Array.Empty<byte>()),
             Items = x.Items.Select(Map).ToList(),
             Payments = x.Payments.Select(p => new PaymentResponseDto
             {
-                Id = p.Id, 
+                Id = p.Id,
                 Amount = p.Amount,
                 Method = p.Method,
                 Status = p.Status,
                 ExternalId = p.ExternalId,
                 PaidAt = p.PaidAt,
-                Refunds = p.Refunds.Select(r => new RefundResponseDto 
-                { Id = r.id,
+                Refunds = p.Refunds.Select(r => new RefundResponseDto
+                {
+                    Id = r.id,
                     PaymentId = r.PaymentId,
-                    Amount = r.Amount, 
+                    Amount = r.Amount,
                     Status = r.Status,
-                    Reason = r.Reason, 
-                    ExternalId = r.ExternalId 
+                    Reason = r.Reason,
+                    ExternalId = r.ExternalId
                 })
-                .ToList() }).
+                .ToList()
+            }).
             ToList(),
             Refunds = x.Payments.SelectMany(p => p.Refunds.Select(r =>
-            new RefundResponseDto 
-            { 
+            new RefundResponseDto
+            {
                 Id = r.id,
                 PaymentId = r.PaymentId,
-                Amount = r.Amount, 
+                Amount = r.Amount,
                 Status = r.Status,
-                Reason = r.Reason, 
-                ExternalId = r.ExternalId 
+                Reason = r.Reason,
+                ExternalId = r.ExternalId
             }))
             .ToList()
         };
     private static FolioItemResponseDto
-        Map(FolioItem x) => 
+        Map(FolioItem x) =>
         new()
-        { 
+        {
             Id = x.id,
             FolioId = x.FolioId,
-            Type = x.Type, 
+            Type = x.Type,
             ServiceId = x.ServiceId,
-            ServiceName = x.ServiceNameSnapshot, 
+            ServiceName = x.ServiceNameSnapshot,
             Amount = x.Amount,
             Tax = x.Tax,
             Source = x.Source,
-            Status = x.Status, 
-            Description = x.Description, 
-            ReferenceId = x.SourceReference, 
+            Status = x.Status,
+            Description = x.Description,
+            ReferenceId = x.SourceReference,
             PostedAt = x.PostedAt,
-            CreatedAt = x.CreatedAt, 
-            CreatedBy = x.CreatedBy 
+            CreatedAt = x.CreatedAt,
+            CreatedBy = x.CreatedBy
         };
     private static decimal Money(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
     private static bool MatchesRowVersion(Folio folio, string? expected)
@@ -681,7 +726,7 @@ public sealed class FolioService : IFolioService
         {
             return true;
         }
-        try 
+        try
         {
             return Convert.FromBase64String(expected).SequenceEqual(folio.RowVersion ?? Array.Empty<byte>());
         }
@@ -694,5 +739,5 @@ public sealed class FolioService : IFolioService
     private static ResponseStatus<T> Ok<T>(T data, string message = "", int status = 200) => new(data, message, status);
     private static ResponseStatus<T> Fail<T>
         (string message, string? code = null, int status = 400) => new(message: message, statusCode: status, code: code);
-   
+
 }

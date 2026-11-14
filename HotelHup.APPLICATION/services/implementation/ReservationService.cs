@@ -1333,7 +1333,7 @@ public sealed class ReservationService : IReservationService
                     x =>
                         x.Status is
                             PaymentStatus.Paid or
-                            PaymentStatus.PartiallyPaid)
+                            PaymentStatus.PartiallyPaid or PaymentStatus.Refunded or PaymentStatus.PartiallyRefunded)
                 .Sum(x => x.Amount)
             ?? 0m;
 
@@ -1975,7 +1975,9 @@ public sealed class ReservationService : IReservationService
                 return Fail<ReservationActionResponse>("Cancellation policy snapshot is required.", "POLICY_SNAPSHOT_REQUIRED", 409);
             } 
             var requiredDeposit = reservation.DepositPolicySnapshot?.RequiredDepositAmount ?? 0m;
-            var paidDeposit = reservation.Folio?.Payments.Where(x => x.Status is PaymentStatus.Paid or PaymentStatus.PartiallyPaid).Sum(x => x.Amount) ?? 0m;
+            var paidDeposit = reservation.Folio?.Payments.Where(x => x.Status is PaymentStatus.Paid or
+            PaymentStatus.PartiallyPaid or 
+            PaymentStatus.Refunded or PaymentStatus.PartiallyRefunded).Sum(x => x.Amount) ?? 0m;
             if (property.Settings?.RequireDepositForReservation == true && requiredDeposit > paidDeposit)
             {
                 return Fail<ReservationActionResponse>("The required deposit has not been paid.", "DEPOSIT_REQUIRED", 409);
@@ -1997,7 +1999,7 @@ public sealed class ReservationService : IReservationService
             }
             var payments = reservation.Folio?.Payments ?? Array.Empty<Payment>();
             var grossPaidAmount = payments
-                .Where(x => x.Status is PaymentStatus.Paid or PaymentStatus.PartiallyPaid)
+                .Where(x => x.Status is PaymentStatus.Paid or PaymentStatus.PartiallyPaid or PaymentStatus.PartiallyRefunded or PaymentStatus.Refunded )
                 .Sum(x => x.Amount);
             var refundedAmount = payments
                 .SelectMany(x => x.Refunds)

@@ -89,7 +89,7 @@ namespace HotelHup.INFRASTRUCTURE.repos
                         : query.OrderBy(x => x.Name)
             };
 
-            return await query
+            return await query.Include(p => p.Taxes).Include(p => p.CancellationPolicies).Include(p=>p.DepositPolicies)
                 .Skip(Math.Max(0, skip))
                 .Take(Math.Max(1, take))
                 .AsNoTracking()
